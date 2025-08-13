@@ -3,7 +3,10 @@ html, body { height: 100%; margin: 0; padding: 0; background-color: #000; color:
 .charts { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 12px; }
 .chart-head { color: #aaa; margin-bottom: 8px; }
 .chart-body { position: relative; height: 300px; background: #0b0b0b; border: 1px solid #222; border-radius: 8px; }
-.chart-placeholder { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(24, 1fr); align-items: end; gap: 2px; padding: 8px; }
+.chart-placeholder { position: absolute; inset: 0; display: grid; align-items: end; gap: 2px; padding: 8px; }
+.bar { display: flex; flex-direction: column; justify-content: flex-end; background: transparent; }
+.bar .spot { width: 100%; }
+.bar .margin { width: 100%; background: #333333; }
 .now-line { position: absolute; top: 0; bottom: 0; width: 2px; background: #ffcc00; left: 0; }
 .toast { position: fixed; bottom: 16px; right: 16px; background: #111; color: #eee; padding: 8px 12px; border-radius: 6px; border: 1px solid #333; }
 .hidden { display: none; }

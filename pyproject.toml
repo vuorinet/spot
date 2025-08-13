@@ -13,6 +13,16 @@ dependencies = [
   "python-dateutil>=2.9",
 ]
 
+[tool.uv]
+dev-dependencies = [
+  "pytest>=8",
+  "pytest-asyncio>=0.23",
+  "ruff>=0.5",
+]
+
+[tool.setuptools]
+packages = ["spot"]
+
 [tool.ruff]
 line-length = 88
 indent-width = 4

@@ -1,0 +1,16 @@
+{% set entries = vm.entries %}
+{% set max_total = vm.maxTotal %}
+<section class="chart" aria-label="Prices chart">
+  <div class="chart-head">{% if vm.granularity == 'hour' %}Hourly{% else %}15-min{% endif %}</div>
+  <div class="chart-body">
+    <div class="chart-placeholder" style="grid-template-columns: repeat({{ entries|length }}, 1fr)">
+      {% for e in entries %}
+      {% set height = (e.totalCents / max_total) * 100 %}
+      <div class="bar" style="height: {{ '%.2f' % height }}%">
+        <div class="spot" style="height: {{ '%.2f' % (e.spotCents / e.totalCents * 100 if e.totalCents else 0) }}%; background: {% if e.color == 'green' %}#2ecc71{% elif e.color == 'yellow' %}#f1c40f{% else %}#e74c3c{% endif %};"></div>
+        <div class="margin" style="height: {{ '%.2f' % (e.marginCents / e.totalCents * 100 if e.totalCents else 0) }}%"></div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>

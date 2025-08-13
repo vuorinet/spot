@@ -77,6 +77,15 @@ def create_app() -> FastAPI:
     async def version() -> dict[str, str]:
         return {"version": os.environ.get("SPOT_VERSION", "dev")}
 
+    @app.get("/events/version")
+    async def version_events() -> StreamingResponse:
+        async def eventgen():
+            while True:
+                ver = os.environ.get("SPOT_VERSION", "dev")
+                yield f"data: {{\"version\": \"{ver}\"}}\n\n"
+                await asyncio.sleep(30)
+        return StreamingResponse(eventgen(), media_type="text/event-stream")
+
     from .entsoe import fetch_day_ahead_prices
 
     async def fetch_prices_for_day(target_date: date) -> DayPrices:
@@ -121,5 +130,97 @@ def create_app() -> FastAPI:
                 } for it in dp.intervals
             ],
         })
+
+    def eur_mwh_to_cents_kwh(eur_per_mwh: float) -> float:
+        # 1 MWh = 1000 kWh; EUR/MWh to EUR/kWh then to cents; include VAT
+        eur_per_kwh = eur_per_mwh / 1000.0
+        cents_per_kwh = eur_per_kwh * 100.0
+        with_vat = cents_per_kwh * (1.0 + VAT_RATE)
+        return with_vat
+
+    def color_for_spot_cents(spot_cents: float) -> str:
+        if spot_cents < 5.0:
+            return "green"
+        if spot_cents < 15.0:
+            return "yellow"
+        return "red"
+
+    def build_view_model(dp: DayPrices, margin_cents: float) -> dict[str, t.Any]:
+        entries: list[dict[str, t.Any]] = []
+        for it in dp.intervals:
+            spot_cents = eur_mwh_to_cents_kwh(it.price_eur_per_mwh)
+            total_cents = max(0.0, spot_cents) + max(0.0, margin_cents)
+            entries.append({
+                "startUtc": it.start_utc,
+                "endUtc": it.end_utc,
+                "spotCents": spot_cents,
+                "marginCents": margin_cents,
+                "totalCents": total_cents,
+                "color": color_for_spot_cents(spot_cents),
+            })
+        max_total = max((e["totalCents"] for e in entries), default=1.0) or 1.0
+        return {"entries": entries, "maxTotal": max_total, "granularity": dp.granularity}
+
+    @app.get("/partials/prices", response_class=HTMLResponse)
+    async def partial_prices(request: Request, date: str, margin: float | None = None) -> HTMLResponse:
+        margin_cents = margin if margin is not None else DEFAULT_MARGIN_CENTS_PER_KWH
+        now_hel = datetime.now(tz=HELSINKI_TZ)
+        base_date = now_hel.date()
+        if date == "today":
+            dp = cache.today or await fetch_prices_for_day(base_date)
+        elif date == "tomorrow":
+            dp = cache.tomorrow
+            if dp is None:
+                # Build margin-only skeleton for tomorrow
+                start_utc = datetime.combine(base_date + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
+                intervals = [
+                    PriceInterval(start_utc + i * timedelta(hours=1), start_utc + (i + 1) * timedelta(hours=1), 0.0)
+                    for i in range(24)
+                ]
+                dp = DayPrices(market="FI", granularity="hour", intervals=intervals, published_at_utc=None)
+        else:
+            try:
+                target = datetime.fromisoformat(date).date()
+            except Exception as exc:  # noqa: BLE001
+                raise HTTPException(status_code=400, detail="Invalid date") from exc
+            dp = await fetch_prices_for_day(target)
+
+        vm = build_view_model(dp, margin_cents)
+        return templates.TemplateResponse("partials/prices.html", {
+            "request": request,
+            "vm": vm,
+        })
+
+    async def startup_tasks():
+        # Initial fetch with retry/backoff until we have today's data
+        backoff = 10
+        while True:
+            try:
+                await ensure_cache_now()
+                if cache.today is not None:
+                    break
+            except Exception:
+                pass
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2, 300)
+
+        async def poll_for_tomorrow_loop():
+            while True:
+                now = datetime.now(tz=HELSINKI_TZ)
+                # Start polling from 13:50 to 14:30 if tomorrow not yet present
+                if (now.hour == 13 and now.minute >= 50) or (now.hour == 14 and cache.tomorrow is None):
+                    try:
+                        cache.tomorrow = await fetch_prices_for_day((now + timedelta(days=1)).date())
+                    except Exception:
+                        pass
+                    await asyncio.sleep(60)
+                else:
+                    await asyncio.sleep(30)
+
+        asyncio.create_task(poll_for_tomorrow_loop())
+
+    @app.on_event("startup")
+    async def _on_startup() -> None:  # noqa: D401
+        await startup_tasks()
 
     return app

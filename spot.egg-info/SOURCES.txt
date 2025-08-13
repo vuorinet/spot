@@ -1,0 +1,11 @@
+RULES.md
+pyproject.toml
+spot/__init__.py
+spot/entsoe.py
+spot/main.py
+spot.egg-info/PKG-INFO
+spot.egg-info/SOURCES.txt
+spot.egg-info/dependency_links.txt
+spot.egg-info/requires.txt
+spot.egg-info/top_level.txt
+tests/test_parse_entsoe.py
