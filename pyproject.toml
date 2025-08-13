@@ -1,0 +1,39 @@
+[project]
+name = "spot"
+version = "0.1.0"
+description = "Spot is a dog: Finland spot electricity prices viewer (today/tomorrow)"
+readme = "RULES.md"
+requires-python = ">=3.12"
+authors = [{name = "Spot is a dog"}]
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "jinja2>=3.1",
+  "httpx>=0.27",
+  "python-dateutil>=2.9",
+]
+
+[tool.ruff]
+line-length = 88
+indent-width = 4
+select = [
+  "E", "F", "W",         # pycodestyle/pyflakes
+  "I",                     # isort
+  "UP",                    # pyupgrade
+  "B",                     # bugbear
+  "C90",                   # mccabe
+  "N",                     # pep8-naming
+  "PL",                    # pylint-like
+]
+ignore = [
+  "D",    # pydocstyle (docstrings not required)
+]
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = ["D", "ANN101", "ANN102"]
+
+[tool.ruff.format]
+quote-style = "preserve"
+indent-style = "space"
+line-ending = "lf"

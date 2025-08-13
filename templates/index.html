@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Spot is a dog</title>
+    <link rel="stylesheet" href="/static/css/styles.css" />
+    <script defer src="/static/js/htmx.min.js"></script>
+    <script defer src="/static/js/main.js"></script>
+  </head>
+  <body data-app-version="{{ os_environ.get('SPOT_VERSION', 'dev') }}" data-default-margin="{{ '%.3f' % (margin_cents or 0.0) }}">
+    <header class="app-header">
+      <h1>Spot is a dog</h1>
+      <div class="controls">
+        <label class="keep-awake"><input type="checkbox" id="keepAwake" /> Keep display always on</label>
+        <button id="forceRefresh" hx-get="/partials/prices?date=today&margin={{ '%.3f' % (margin_cents or 0.0) }}" hx-target="#todayChart" hx-swap="outerHTML">Force refresh</button>
+      </div>
+    </header>
+
+    <main class="charts">
+      <section id="todayChart" hx-get="/partials/prices?date=today&margin={{ '%.3f' % (margin_cents or 0.0) }}" hx-trigger="load from:body" hx-swap="outerHTML">
+        <div class="chart-head">Today</div>
+        <div class="chart-body">
+          <div class="chart-placeholder"></div>
+        </div>
+      </section>
+      <section id="tomorrowChart" hx-get="/partials/prices?date=tomorrow&margin={{ '%.3f' % (margin_cents or 0.0) }}" hx-trigger="load from:body" hx-swap="outerHTML">
+        <div class="chart-head">Tomorrow</div>
+        <div class="chart-body">
+          <div class="chart-placeholder"></div>
+        </div>
+      </section>
+      <div class="now-line" id="nowLine"></div>
+    </main>
+
+    <div id="toast" class="toast hidden">
+      <span>New version available</span>
+      <button id="reloadNow">Reload now</button>
+      <span id="countdown"></span>
+    </div>
+  </body>
+</html>
