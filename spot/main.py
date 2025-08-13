@@ -5,6 +5,7 @@ import asyncio
 from datetime import date, datetime, timedelta, timezone
 import os
 import typing as t
+import logging
 
 import httpx
 from dateutil import tz
@@ -16,6 +17,13 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 from fastapi.templating import Jinja2Templates
+
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(
+    level=getattr(logging, LOG_LEVEL, logging.INFO),
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+logger = logging.getLogger("spot")
 
 ENTSOE_API_TOKEN = os.environ.get("ENTSOE_API_TOKEN")
 DEFAULT_MARGIN_CENTS_PER_KWH = float(os.environ.get("DEFAULT_MARGIN_CENTS_PER_KWH", "0"))
@@ -62,6 +70,9 @@ def create_app() -> FastAPI:
         raise RuntimeError("ENTSOE_API_TOKEN is required")
 
     app = FastAPI(title="Spot is a dog")
+    logger.info("Starting app: Spot is a dog")
+    logger.info("Log level: %s", LOG_LEVEL)
+    logger.info("Default margin (c/kWh): %s", DEFAULT_MARGIN_CENTS_PER_KWH)
 
     app.add_middleware(GZipMiddleware, minimum_size=1024)
     app.add_middleware(ProxyHeadersMiddleware)
@@ -99,8 +110,10 @@ def create_app() -> FastAPI:
         now_hel = datetime.now(tz=HELSINKI_TZ)
         today_d = now_hel.date()
         if cache.today is None or cache.today.intervals[0].start_utc.date() != today_d:
+            logger.info("Fetching today's prices for %s", today_d)
             cache.today = await fetch_prices_for_day(today_d)
         if cache.tomorrow is None:
+            logger.info("Attempting to prefetch tomorrow's prices for %s", today_d + timedelta(days=1))
             cache.tomorrow = await fetch_prices_for_day(today_d + timedelta(days=1))
         cache.last_refresh_utc = datetime.now(timezone.utc)
 
@@ -117,6 +130,7 @@ def create_app() -> FastAPI:
     @app.get("/api/prices", response_class=JSONResponse)
     async def api_prices(date_str: str) -> JSONResponse:
         target = datetime.fromisoformat(date_str).date()
+        logger.debug("/api/prices date=%s", target)
         dp = await fetch_prices_for_day(target)
         return JSONResponse({
             "market": dp.market,
@@ -165,6 +179,7 @@ def create_app() -> FastAPI:
     @app.get("/partials/prices", response_class=HTMLResponse)
     async def partial_prices(request: Request, date: str, margin: float | None = None) -> HTMLResponse:
         margin_cents = margin if margin is not None else DEFAULT_MARGIN_CENTS_PER_KWH
+        logger.debug("/partials/prices date=%s margin=%.3f", date, margin_cents)
         now_hel = datetime.now(tz=HELSINKI_TZ)
         base_date = now_hel.date()
         if date == "today":
@@ -173,6 +188,7 @@ def create_app() -> FastAPI:
             dp = cache.tomorrow
             if dp is None:
                 # Build margin-only skeleton for tomorrow
+                logger.info("Tomorrow not yet published; rendering margin-only skeleton")
                 start_utc = datetime.combine(base_date + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
                 intervals = [
                     PriceInterval(start_utc + i * timedelta(hours=1), start_utc + (i + 1) * timedelta(hours=1), 0.0)
@@ -183,6 +199,7 @@ def create_app() -> FastAPI:
             try:
                 target = datetime.fromisoformat(date).date()
             except Exception as exc:  # noqa: BLE001
+                logger.warning("Invalid date param: %s", date)
                 raise HTTPException(status_code=400, detail="Invalid date") from exc
             dp = await fetch_prices_for_day(target)
 
@@ -197,11 +214,13 @@ def create_app() -> FastAPI:
         backoff = 10
         while True:
             try:
+                logger.info("Startup fetch attempt (backoff=%ss)", backoff)
                 await ensure_cache_now()
                 if cache.today is not None:
+                    logger.info("Startup fetch succeeded; cache is warm")
                     break
             except Exception:
-                pass
+                logger.exception("Startup fetch failed; will retry")
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, 300)
 
@@ -210,10 +229,11 @@ def create_app() -> FastAPI:
                 now = datetime.now(tz=HELSINKI_TZ)
                 # Start polling from 13:50 to 14:30 if tomorrow not yet present
                 if (now.hour == 13 and now.minute >= 50) or (now.hour == 14 and cache.tomorrow is None):
+                    logger.info("Polling ENTSO-E for tomorrow's prices (%s)", (now + timedelta(days=1)).date())
                     try:
                         cache.tomorrow = await fetch_prices_for_day((now + timedelta(days=1)).date())
                     except Exception:
-                        pass
+                        logger.exception("Polling attempt failed")
                     await asyncio.sleep(60)
                 else:
                     await asyncio.sleep(30)

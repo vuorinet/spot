@@ -31,9 +31,10 @@ export SPOT_VERSION=dev
 
 How to get ENTSO-E token: register at the [ENTSO-E Transparency Platform](https://transparency.entsoe.eu/), generate an API token, and use it as `ENTSOE_API_TOKEN`.
 
-3) Run the server:
+3) Run the server (with logs):
 ```bash
-uv run uvicorn spot.main:create_app --factory --host 0.0.0.0 --port 8000 --proxy-headers
+export LOG_LEVEL=INFO  # or DEBUG for more verbosity
+uv run uvicorn spot.main:create_app --factory --host 0.0.0.0 --port 8000 --proxy-headers --log-level info
 ```
 
 Open: `http://localhost:8000`
@@ -49,6 +50,7 @@ Prerequisites:
 ENTSOE_API_TOKEN=<your_entsoe_token>
 DEFAULT_MARGIN_CENTS_PER_KWH=0
 SPOT_VERSION=dev
+LOG_LEVEL=INFO
 ```
 
 2) Build and start:
@@ -57,6 +59,16 @@ docker compose up -d --build
 ```
 
 Open: `http://localhost:8000`
+
+### Debugging startup issues
+- If the server appears stuck on "Waiting for application startup", enable debug logging:
+  - Set `LOG_LEVEL=DEBUG`
+  - Uvicorn flag `--log-level debug`
+- Watch for lines like:
+  - `Starting app: Spot is a dog`
+  - `Startup fetch attempt (backoff=...)` and `Startup fetch succeeded; cache is warm`
+  - `Fetching today's prices ...` / `Attempting to prefetch tomorrow's prices ...`
+- If ENTSO-E is unreachable or token invalid, you will see exception logs during startup backoff retries.
 
 ## Tests
 ```bash
