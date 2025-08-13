@@ -1,0 +1,13 @@
+version: "3.9"
+services:
+  app:
+    build: .
+    image: spot:latest
+    restart: unless-stopped
+    environment:
+      ENTSOE_API_TOKEN: ${ENTSOE_API_TOKEN}
+      TZ: Europe/Helsinki
+      DEFAULT_MARGIN_CENTS_PER_KWH: ${DEFAULT_MARGIN_CENTS_PER_KWH:-0}
+      SPOT_VERSION: ${SPOT_VERSION:-dev}
+    ports:
+      - "8000:8000"
