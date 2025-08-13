@@ -4,8 +4,7 @@ from datetime import datetime, timezone
 
 from spot.entsoe import parse_publication_xml
 
-EXAMPLE_XML = b"""
-<?xml version="1.0" encoding="UTF-8"?>
+EXAMPLE_XML = b"""<?xml version="1.0" encoding="UTF-8"?>
 <Publication_MarketDocument xmlns="urn:iec62325.351:tc57wg16:451-3:publicationdocument:7:0">
   <TimeSeries>
     <Period>
