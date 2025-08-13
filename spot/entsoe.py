@@ -14,6 +14,10 @@ FI_EIC = "10YFI-1--------U"
 ENTSOE_BASE_URL = os.environ.get("ENTSOE_BASE_URL", "https://web-api.tp.entsoe.eu/api")
 
 
+class DataNotAvailable(Exception):
+    """Raised when ENTSO-E returns no time series for the requested period."""
+
+
 @dataclass(frozen=True)
 class PricePoint:
     start_utc: datetime
@@ -47,7 +51,8 @@ def parse_publication_xml(xml_bytes: bytes) -> DaySeries:
 
     ts_list = root.findall(".//ns:TimeSeries", ns)
     if not ts_list:
-        raise ValueError("No TimeSeries in response")
+        # Many cases: Acknowledgement document, or no content yet
+        raise DataNotAvailable("No TimeSeries in response")
 
     all_points: list[PricePoint] = []
     granularity: t.Literal["hour", "quarter_hour"] | None = None

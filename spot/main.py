@@ -98,7 +98,7 @@ def create_app() -> FastAPI:
                 await asyncio.sleep(30)
         return StreamingResponse(eventgen(), media_type="text/event-stream")
 
-    from .entsoe import fetch_day_ahead_prices
+    from .entsoe import fetch_day_ahead_prices, DataNotAvailable
 
     async def fetch_prices_for_day(target_date: date) -> DayPrices:
         ds = await fetch_day_ahead_prices(ENTSOE_API_TOKEN, target_date)
@@ -111,10 +111,18 @@ def create_app() -> FastAPI:
         today_d = now_hel.date()
         if cache.today is None or cache.today.intervals[0].start_utc.date() != today_d:
             logger.info("Fetching today's prices for %s", today_d)
-            cache.today = await fetch_prices_for_day(today_d)
+            try:
+                cache.today = await fetch_prices_for_day(today_d)
+            except DataNotAvailable:
+                logger.info("Today's prices not available yet; will retry")
+                cache.today = None
         if cache.tomorrow is None:
             logger.info("Attempting to prefetch tomorrow's prices for %s", today_d + timedelta(days=1))
-            cache.tomorrow = await fetch_prices_for_day(today_d + timedelta(days=1))
+            try:
+                cache.tomorrow = await fetch_prices_for_day(today_d + timedelta(days=1))
+            except DataNotAvailable:
+                logger.info("Tomorrow's prices not available yet")
+                cache.tomorrow = None
         cache.last_refresh_utc = datetime.now(timezone.utc)
 
     @app.get("/", response_class=HTMLResponse)
