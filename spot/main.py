@@ -13,9 +13,7 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.middleware.sessions import SessionMiddleware
 from starlette.types import ASGIApp
-from starlette.middleware import Middleware
 from fastapi.templating import Jinja2Templates
 
 ENTSOE_API_TOKEN = os.environ.get("ENTSOE_API_TOKEN")
@@ -79,15 +77,12 @@ def create_app() -> FastAPI:
     async def version() -> dict[str, str]:
         return {"version": os.environ.get("SPOT_VERSION", "dev")}
 
+    from .entsoe import fetch_day_ahead_prices
+
     async def fetch_prices_for_day(target_date: date) -> DayPrices:
-        # Placeholder: implement ENTSO-E fetch; return dummy data for now
-        start_utc = datetime.combine(target_date, datetime.min.time(), tzinfo=timezone.utc)
-        intervals: list[PriceInterval] = []
-        for h in range(24):
-            s = start_utc + timedelta(hours=h)
-            e = s + timedelta(hours=1)
-            intervals.append(PriceInterval(s, e, price_eur_per_mwh=50.0))
-        return DayPrices(market="FI", granularity="hour", intervals=intervals, published_at_utc=None)
+        ds = await fetch_day_ahead_prices(ENTSOE_API_TOKEN, target_date)
+        intervals = [PriceInterval(p.start_utc, p.end_utc, p.price_eur_per_mwh) for p in ds.points]
+        return DayPrices(market=ds.market, granularity=ds.granularity, intervals=intervals, published_at_utc=ds.published_at_utc)
 
     async def ensure_cache_now() -> None:
         # Minimal: populate today and attempt tomorrow
@@ -101,10 +96,7 @@ def create_app() -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse)
     async def home(request: Request, margin: float | None = Query(default=None)) -> HTMLResponse:
-        # Normalize margin via URL injection if missing
-        if margin is None:
-            default_margin = DEFAULT_MARGIN_CENTS_PER_KWH
-            # Redirect by rendering a template that updates URL via pushState
+        # Normalize margin via URL injection if missing (handled client-side)
         await ensure_cache_now()
         return templates.TemplateResponse("index.html", {
             "request": request,
