@@ -27,6 +27,8 @@ uv sync --dev
 export ENTSOE_API_TOKEN="<your_entsoe_token>"
 export DEFAULT_MARGIN_CENTS_PER_KWH=0
 export SPOT_VERSION=dev
+# Optional: override ENTSO-E base URL if needed
+# export ENTSOE_BASE_URL=https://web-api.tp.entsoe.eu/api
 ```
 
 How to get ENTSO-E token: register at the [ENTSO-E Transparency Platform](https://transparency.entsoe.eu/), generate an API token, and use it as `ENTSOE_API_TOKEN`.
@@ -51,6 +53,8 @@ ENTSOE_API_TOKEN=<your_entsoe_token>
 DEFAULT_MARGIN_CENTS_PER_KWH=0
 SPOT_VERSION=dev
 LOG_LEVEL=INFO
+# Optional override if DNS issues occur
+# ENTSOE_BASE_URL=https://web-api.tp.entsoe.eu/api
 ```
 
 2) Build and start:

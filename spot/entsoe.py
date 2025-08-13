@@ -7,9 +7,11 @@ import typing as t
 import xml.etree.ElementTree as ET
 
 import httpx
+import os
 
 FI_EIC = "10YFI-1--------U"
-ENTSOE_BASE_URL = "https://web-api.entsoe.eu/api"
+# Allow overriding via env; default to known working host
+ENTSOE_BASE_URL = os.environ.get("ENTSOE_BASE_URL", "https://web-api.tp.entsoe.eu/api")
 
 
 @dataclass(frozen=True)
