@@ -6,6 +6,7 @@
     <title>Spot is a dog</title>
     <link rel="stylesheet" href="/static/css/styles.css" />
     <script src="https://cdn.jsdelivr.net/npm/htmx.org@1.9.12"></script>
+    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
     <script defer src="/static/js/main.js"></script>
   </head>
   <body data-app-version="{{ app_version }}" data-default-margin="{{ '%.3f' % (margin_cents or 0.0) }}">
@@ -13,7 +14,7 @@
       <h1>Spot is a dog</h1>
       <div class="controls">
         <label class="keep-awake"><input type="checkbox" id="keepAwake" /> Keep display always on</label>
-        <button id="forceRefresh" hx-get="/partials/prices?date=today&margin={{ '%.3f' % (margin_cents or 0.0) }}" hx-target="#todayChart" hx-swap="outerHTML">Force refresh</button>
+        <button id="forceRefresh" onclick="refreshCharts()">Force refresh</button>
       </div>
     </header>
 
