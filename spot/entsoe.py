@@ -114,8 +114,17 @@ def parse_publication_xml(xml_bytes: bytes) -> DaySeries:
 
 
 async def fetch_day_ahead_prices(token: str, target_date: date) -> DaySeries:
-    period_start = datetime(target_date.year, target_date.month, target_date.day, 0, 0, tzinfo=timezone.utc)
-    period_end = period_start + timedelta(days=1)
+    # Create Helsinki timezone start and end times, then convert to UTC
+    # ENTSO-E expects local time boundaries for the market data
+    from dateutil import tz
+    helsinki_tz = tz.gettz("Europe/Helsinki")
+    
+    period_start_local = datetime(target_date.year, target_date.month, target_date.day, 0, 0, tzinfo=helsinki_tz)
+    period_end_local = period_start_local + timedelta(days=1)
+    
+    # Convert to UTC for the API request
+    period_start = period_start_local.astimezone(timezone.utc)
+    period_end = period_end_local.astimezone(timezone.utc)
     params = {
         "securityToken": token,
         "documentType": "A44",
