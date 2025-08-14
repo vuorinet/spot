@@ -381,19 +381,33 @@ def create_app() -> FastAPI:
             # Sort chart data by hour to ensure proper order
             chart_data.sort(key=lambda x: int(x[0]))
             
-            # Handle case where no data found
+            # Ensure all 24 hours are represented for consistent chart layout
+            # Create a complete 24-hour chart data with missing hours filled with zeros
+            complete_chart_data = []
+            chart_data_dict = {int(row[0]): row for row in chart_data}
+            
+            for hour in range(24):
+                hour_str = str(hour)
+                if hour in chart_data_dict:
+                    # Use existing data
+                    complete_chart_data.append(chart_data_dict[hour])
+                else:
+                    # Fill missing hour with zeros (margin still applies)
+                    complete_chart_data.append([hour_str, 0, 0, 0, margin_cents])
+            
+            # Handle case where no actual price data found
             if not chart_data:
-                logger.warning(f"No data found for date {target}")
+                logger.warning(f"No price data found for date {target}")
                 return JSONResponse({
-                    "data": [],
+                    "data": complete_chart_data,
                     "maxPrice": global_max_price,
                     "minPrice": global_min_price,
                     "dateString": target.strftime("%A %m/%d/%Y"),
-                    "error": "No data available for this date"
+                    "error": "No price data available for this date"
                 })
             
             return JSONResponse({
-                "data": chart_data,
+                "data": complete_chart_data,
                 "maxPrice": global_max_price,
                 "minPrice": global_min_price,
                 "dateString": target.strftime("%A %m/%d/%Y")
