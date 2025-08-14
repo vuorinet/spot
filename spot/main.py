@@ -155,6 +155,75 @@ def create_app() -> FastAPI:
             ],
         })
 
+    async def calculate_global_price_range() -> tuple[float, float]:
+        """Calculate global min/max price range for consistent chart scaling"""
+        LOW_PRICE = 5.0  # cents/kWh
+        HIGH_PRICE = 15.0  # cents/kWh
+        TRANSMISSION_PRICE = 3.0  # cents/kWh (example fixed value)
+        TAX_PRICE = 2.0  # cents/kWh (example fixed value)
+        
+        global_max = float('-inf')
+        global_min = float('inf')
+        
+        # Ensure cache is populated
+        await ensure_cache_now()
+        
+        datasets_checked = 0
+        intervals_processed = 0
+        
+        # Check both today and tomorrow data for global range
+        for name, dp in [("today", cache.today), ("tomorrow", cache.tomorrow)]:
+            if dp is None:
+                logger.debug(f"No data for {name}")
+                continue
+                
+            datasets_checked += 1
+            logger.debug(f"Processing {name} data with {len(dp.intervals)} intervals")
+                
+            for it in dp.intervals:
+                # Convert EUR/MWh to cents/kWh (with VAT included)
+                spot_cents = eur_mwh_to_cents_kwh(it.price_eur_per_mwh)
+                
+                # Check all the individual components that will be stacked in the chart
+                low_electricity = spot_cents if spot_cents < LOW_PRICE else 0
+                medium_electricity = spot_cents if LOW_PRICE <= spot_cents < HIGH_PRICE else 0  
+                high_electricity = spot_cents if spot_cents >= HIGH_PRICE else 0
+                
+                # Find min/max from all chart components (individual components can be negative)
+                all_values = [low_electricity, medium_electricity, high_electricity, TRANSMISSION_PRICE, TAX_PRICE]
+                global_max = max(global_max, max(all_values))
+                global_min = min(global_min, min(all_values))
+                
+                # Also check the total stacked value
+                total_price = spot_cents + TRANSMISSION_PRICE + TAX_PRICE
+                global_max = max(global_max, total_price)
+                global_min = min(global_min, total_price)
+                
+                intervals_processed += 1
+        
+        logger.debug(f"Processed {datasets_checked} datasets, {intervals_processed} intervals")
+        
+        # If no data found, use reasonable defaults
+        if global_min == float('inf') or global_max == float('-inf'):
+            logger.warning("No price data found for global range calculation, using defaults")
+            global_min = 0.0
+            global_max = 25.0
+        
+        # Round min/max prices like Angular component
+        max_price_rounded = max(25, (int(global_max / 5) + 1) * 5)  # Minimum 25
+        
+        # For minimum: only start from 0 if there are no negative prices
+        if global_min < 0:
+            min_price_rounded = int(global_min / 5) * 5  # Round down for negative prices
+            if global_min % 5 != 0:  # If not exactly divisible, round further down
+                min_price_rounded -= 5
+        else:
+            min_price_rounded = 0  # Start from 0 for positive prices
+        
+        logger.info(f"Global price range: {global_min:.2f} -> {global_max:.2f}, rounded: {min_price_rounded} -> {max_price_rounded}")
+        
+        return min_price_rounded, max_price_rounded
+
     @app.get("/api/chart-data", response_class=JSONResponse)
     async def api_chart_data(date_str: str, margin: float | None = Query(default=None)) -> JSONResponse:
         """API endpoint that provides data in Google Charts format like the Angular component"""
@@ -166,17 +235,30 @@ def create_app() -> FastAPI:
             # Get all available data from cache first
             await ensure_cache_now()
             
+            # Calculate global price range for consistent scaling
+            global_min_price, global_max_price = await calculate_global_price_range()
+            
             # Determine which data to use based on the requested date
             now_hel = datetime.now(tz=HELSINKI_TZ)
             today_date = now_hel.date()
             tomorrow_date = today_date + timedelta(days=1)
             
-            if target == today_date and cache.today:
-                dp = cache.today
-            elif target == tomorrow_date and cache.tomorrow:
-                dp = cache.tomorrow
+            if target == today_date:
+                if cache.today:
+                    dp = cache.today
+                else:
+                    # Ensure today's cache is populated
+                    await ensure_cache_now()
+                    dp = cache.today or await fetch_prices_for_day(target)
+            elif target == tomorrow_date:
+                if cache.tomorrow:
+                    dp = cache.tomorrow
+                else:
+                    # Ensure tomorrow's cache is populated if possible
+                    await ensure_cache_now()
+                    dp = cache.tomorrow or await fetch_prices_for_day(target)
             else:
-                # Fallback to direct fetch
+                # Fallback to direct fetch for other dates
                 dp = await fetch_prices_for_day(target)
             
             LOW_PRICE = 5.0  # cents/kWh
@@ -185,8 +267,6 @@ def create_app() -> FastAPI:
             TAX_PRICE = 2.0  # cents/kWh (example fixed value)
             
             chart_data = []
-            max_price = 0.0
-            min_price = float('inf')
             
             # Process all intervals and filter by target date in Helsinki timezone
             for it in dp.intervals:
@@ -209,10 +289,6 @@ def create_app() -> FastAPI:
                 # Get hour from start time
                 hour_str = str(start_helsinki.hour)
                 
-                total_price = spot_cents + TRANSMISSION_PRICE + TAX_PRICE
-                max_price = max(max_price, total_price)
-                min_price = min(min_price, total_price)
-                
                 chart_data.append([
                     hour_str,
                     low_electricity,
@@ -230,20 +306,16 @@ def create_app() -> FastAPI:
                 logger.warning(f"No data found for date {target}")
                 return JSONResponse({
                     "data": [],
-                    "maxPrice": 25,
-                    "minPrice": 0,
+                    "maxPrice": global_max_price,
+                    "minPrice": global_min_price,
                     "dateString": target.strftime("%A %m/%d/%Y"),
                     "error": "No data available for this date"
                 })
             
-            # Round min/max prices like Angular component
-            max_price_rounded = max(25, (int(max_price / 5) + 1) * 5)  # Minimum 25
-            min_price_rounded = max(0, int(min_price / 5) * 5)
-            
             return JSONResponse({
                 "data": chart_data,
-                "maxPrice": max_price_rounded,
-                "minPrice": min_price_rounded,
+                "maxPrice": global_max_price,
+                "minPrice": global_min_price,
                 "dateString": target.strftime("%A %m/%d/%Y")
             })
         except Exception as e:
