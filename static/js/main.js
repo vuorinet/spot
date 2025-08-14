@@ -43,11 +43,22 @@
     if (!!window.EventSource) {
       const es = new EventSource('/events/version');
       es.onmessage = (ev) => {
-        const { version } = JSON.parse(ev.data);
-        if (version && version !== currentVersion) scheduleReloadToast();
+        const event = JSON.parse(ev.data);
+        
+        // Handle version updates
+        if (event.type === 'version' && event.version && event.version !== currentVersion) {
+          scheduleReloadToast();
+        }
+        
+        // Handle cache updates (midnight rotation, new data arrivals)
+        if (event.type === 'cache_rotated' || event.type === 'today_updated' || event.type === 'tomorrow_updated') {
+          console.log(`Cache event received: ${event.type}`, event);
+          window.refreshCharts();
+        }
       };
       es.onerror = () => {
         es.close();
+        console.warn('SSE connection error, falling back to polling for version updates.');
         setInterval(checkVersion, 60000);
       };
     } else {

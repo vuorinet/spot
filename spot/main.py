@@ -92,10 +92,34 @@ def create_app() -> FastAPI:
     @app.get("/events/version")
     async def version_events() -> StreamingResponse:
         async def eventgen():
-            while True:
+            # Create a queue for this connection
+            event_queue = asyncio.Queue()
+            
+            # Register callback to receive cache events
+            async def on_cache_event(event_data):
+                await event_queue.put(event_data)
+            
+            cache_event_callbacks.append(on_cache_event)
+            
+            try:
+                # Send initial version
                 ver = os.environ.get("SPOT_VERSION", "dev")
-                yield f"data: {{\"version\": \"{ver}\"}}\n\n"
-                await asyncio.sleep(30)
+                yield f"data: {{\"type\": \"version\", \"version\": \"{ver}\"}}\n\n"
+                
+                while True:
+                    try:
+                        # Wait for cache events or timeout after 30 seconds
+                        event_data = await asyncio.wait_for(event_queue.get(), timeout=30.0)
+                        yield f"data: {json.dumps(event_data)}\n\n"
+                    except asyncio.TimeoutError:
+                        # Send periodic version updates
+                        ver = os.environ.get("SPOT_VERSION", "dev")
+                        yield f"data: {{\"type\": \"version\", \"version\": \"{ver}\"}}\n\n"
+            finally:
+                # Clean up callback when connection closes
+                if on_cache_event in cache_event_callbacks:
+                    cache_event_callbacks.remove(on_cache_event)
+                    
         return StreamingResponse(eventgen(), media_type="text/event-stream")
 
     from .entsoe import fetch_day_ahead_prices, DataNotAvailable
@@ -105,11 +129,46 @@ def create_app() -> FastAPI:
         intervals = [PriceInterval(p.start_utc, p.end_utc, p.price_eur_per_mwh) for p in ds.points]
         return DayPrices(market=ds.market, granularity=ds.granularity, intervals=intervals, published_at_utc=ds.published_at_utc)
 
+    # Cache event callbacks for notifying browsers
+    cache_event_callbacks = []
+    
+    async def notify_cache_event(event_type: str, data: dict = None):
+        """Notify all connected browsers about cache events"""
+        event_data = {"type": event_type, "timestamp": datetime.now(timezone.utc).isoformat()}
+        if data:
+            event_data.update(data)
+        
+        # Call all registered callbacks (WebSocket/SSE connections)
+        for callback in cache_event_callbacks[:]:  # Copy list to avoid modification during iteration
+            try:
+                await callback(event_data)
+            except Exception as e:
+                logger.warning(f"Failed to notify cache event callback: {e}")
+                # Remove failed callbacks
+                cache_event_callbacks.remove(callback)
+    
     async def ensure_cache_now() -> None:
         # Minimal: populate today and attempt tomorrow
         now_hel = datetime.now(tz=HELSINKI_TZ)
         today_d = now_hel.date()
         logger.debug(f"ensure_cache_now() called for {today_d}")
+        
+        # Check if we need to rotate cache at midnight
+        cache_rotated = False
+        if cache.today is not None:
+            # Check if cached "today" data is actually from yesterday
+            today_intervals = [it for it in cache.today.intervals 
+                             if it.start_utc.astimezone(HELSINKI_TZ).date() == today_d]
+            if not today_intervals and cache.tomorrow is not None:
+                # Check if "tomorrow" data is actually today's data now
+                tomorrow_intervals = [it for it in cache.tomorrow.intervals 
+                                    if it.start_utc.astimezone(HELSINKI_TZ).date() == today_d]
+                if tomorrow_intervals:
+                    logger.info("Midnight transition: rotating tomorrow's cache to today")
+                    cache.today = cache.tomorrow
+                    cache.tomorrow = None
+                    cache_rotated = True
+                    await notify_cache_event("cache_rotated", {"new_today": today_d.isoformat()})
         
         # Check if we need to fetch today's data
         need_today = True
@@ -126,6 +185,7 @@ def create_app() -> FastAPI:
             try:
                 cache.today = await fetch_prices_for_day(today_d)
                 logger.info("Successfully cached today's prices (%d intervals)", len(cache.today.intervals))
+                await notify_cache_event("today_updated", {"date": today_d.isoformat()})
             except DataNotAvailable:
                 logger.info("Today's prices not available yet; will retry")
                 cache.today = None
@@ -137,6 +197,7 @@ def create_app() -> FastAPI:
             try:
                 cache.tomorrow = await fetch_prices_for_day(today_d + timedelta(days=1))
                 logger.info("Successfully cached tomorrow's prices (%d intervals)", len(cache.tomorrow.intervals))
+                await notify_cache_event("tomorrow_updated", {"date": (today_d + timedelta(days=1)).isoformat()})
             except DataNotAvailable:
                 logger.debug("Tomorrow's prices not available yet")
                 cache.tomorrow = None
@@ -426,14 +487,36 @@ def create_app() -> FastAPI:
                 if (now.hour == 13 and now.minute >= 50) or (now.hour == 14 and cache.tomorrow is None):
                     logger.info("Polling ENTSO-E for tomorrow's prices (%s)", (now + timedelta(days=1)).date())
                     try:
-                        cache.tomorrow = await fetch_prices_for_day((now + timedelta(days=1)).date())
+                        old_tomorrow = cache.tomorrow
+                        await ensure_cache_now()  # This will fetch tomorrow if needed and notify
+                        if old_tomorrow is None and cache.tomorrow is not None:
+                            logger.info("Successfully retrieved tomorrow's prices during polling window")
                     except Exception:
                         logger.exception("Polling attempt failed")
                     await asyncio.sleep(60)
                 else:
                     await asyncio.sleep(30)
 
+        async def midnight_cache_rotation_loop():
+            """Background task to ensure cache rotation happens at midnight even if no requests come in"""
+            while True:
+                now = datetime.now(tz=HELSINKI_TZ)
+                # Calculate seconds until next midnight
+                next_midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+                seconds_until_midnight = (next_midnight - now).total_seconds()
+                
+                # Sleep until midnight (with small buffer)
+                await asyncio.sleep(max(1, seconds_until_midnight - 30))
+                
+                # Check cache rotation at midnight
+                logger.info("Midnight timer: checking cache rotation")
+                await ensure_cache_now()
+                
+                # Sleep a bit to avoid multiple triggers
+                await asyncio.sleep(60)
+
         asyncio.create_task(poll_for_tomorrow_loop())
+        asyncio.create_task(midnight_cache_rotation_loop())
 
     @app.on_event("startup")
     async def _on_startup() -> None:  # noqa: D401
