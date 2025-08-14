@@ -212,14 +212,32 @@ window.createChart_{{ chart_date }} = function() {
           lineX = chartLayout.getXLocation(dataPointIndex);
         } catch (e) {
           console.warn('getXLocation failed, using fallback calculation');
-          // Fallback calculation
-          const columnWidth = chartArea.width / validData.length;
-          lineX = chartArea.left + (dataPointIndex + 0.5) * columnWidth;
+          // Fallback calculation accounting for 70% groupWidth (30% gaps)
+          const totalColumns = validData.length;
+          const groupWidth = 0.7; // matches chart options
+          const effectiveWidth = chartArea.width * groupWidth;
+          const gapWidth = chartArea.width * (1 - groupWidth);
+          const columnWidth = effectiveWidth / totalColumns;
+          const gapPerColumn = gapWidth / (totalColumns + 1);
+          
+          lineX = chartArea.left + gapPerColumn + (dataPointIndex * (columnWidth + gapPerColumn)) + (columnWidth / 2);
         }
       } else {
-        // Hour not found in data, calculate approximate position
-        const hourProgress = (currentHour + currentMinutes / 60) / 24;
-        lineX = chartArea.left + (chartArea.width * hourProgress);
+        // Hour not found in data, calculate position accounting for gaps and actual bar positions
+        // Since we now pad data to 24 hours, this should rarely happen, but handle it properly
+        const totalColumns = 24; // We always have 24 hours now
+        const groupWidth = 0.7; // matches chart options
+        const effectiveWidth = chartArea.width * groupWidth;
+        const gapWidth = chartArea.width * (1 - groupWidth);
+        const columnWidth = effectiveWidth / totalColumns;
+        const gapPerColumn = gapWidth / (totalColumns + 1);
+        
+        // Position within the current hour based on minutes
+        const exactPosition = currentHour + (currentMinutes / 60);
+        const hourStart = chartArea.left + gapPerColumn + (currentHour * (columnWidth + gapPerColumn));
+        const minuteOffset = (currentMinutes / 60) * columnWidth;
+        
+        lineX = hourStart + minuteOffset;
       }
       
       // Create yellow line
