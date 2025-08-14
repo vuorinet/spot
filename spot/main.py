@@ -155,6 +155,101 @@ def create_app() -> FastAPI:
             ],
         })
 
+    @app.get("/api/chart-data", response_class=JSONResponse)
+    async def api_chart_data(date_str: str, margin: float | None = Query(default=None)) -> JSONResponse:
+        """API endpoint that provides data in Google Charts format like the Angular component"""
+        try:
+            target = datetime.fromisoformat(date_str).date()
+            margin_cents = margin if margin is not None else DEFAULT_MARGIN_CENTS_PER_KWH
+            logger.debug("/api/chart-data date=%s margin=%.3f", target, margin_cents)
+            
+            # Get all available data from cache first
+            await ensure_cache_now()
+            
+            # Determine which data to use based on the requested date
+            now_hel = datetime.now(tz=HELSINKI_TZ)
+            today_date = now_hel.date()
+            tomorrow_date = today_date + timedelta(days=1)
+            
+            if target == today_date and cache.today:
+                dp = cache.today
+            elif target == tomorrow_date and cache.tomorrow:
+                dp = cache.tomorrow
+            else:
+                # Fallback to direct fetch
+                dp = await fetch_prices_for_day(target)
+            
+            LOW_PRICE = 5.0  # cents/kWh
+            HIGH_PRICE = 15.0  # cents/kWh
+            TRANSMISSION_PRICE = 3.0  # cents/kWh (example fixed value)
+            TAX_PRICE = 2.0  # cents/kWh (example fixed value)
+            
+            chart_data = []
+            max_price = 0.0
+            min_price = float('inf')
+            
+            # Process all intervals and filter by target date in Helsinki timezone
+            for it in dp.intervals:
+                # Convert to Helsinki timezone
+                start_helsinki = it.start_utc.astimezone(HELSINKI_TZ)
+                interval_date = start_helsinki.date()
+                
+                # Skip intervals that don't match the target date
+                if interval_date != target:
+                    continue
+                
+                # Convert EUR/MWh to cents/kWh (with VAT included)
+                spot_cents = eur_mwh_to_cents_kwh(it.price_eur_per_mwh)
+                
+                # Split electricity price into low/medium/high buckets like Angular component
+                low_electricity = spot_cents if spot_cents < LOW_PRICE else 0
+                medium_electricity = spot_cents if LOW_PRICE <= spot_cents < HIGH_PRICE else 0  
+                high_electricity = spot_cents if spot_cents >= HIGH_PRICE else 0
+                
+                # Get hour from start time
+                hour_str = str(start_helsinki.hour)
+                
+                total_price = spot_cents + TRANSMISSION_PRICE + TAX_PRICE
+                max_price = max(max_price, total_price)
+                min_price = min(min_price, total_price)
+                
+                chart_data.append([
+                    hour_str,
+                    low_electricity,
+                    medium_electricity, 
+                    high_electricity,
+                    TRANSMISSION_PRICE,
+                    TAX_PRICE
+                ])
+            
+            # Sort chart data by hour to ensure proper order
+            chart_data.sort(key=lambda x: int(x[0]))
+            
+            # Handle case where no data found
+            if not chart_data:
+                logger.warning(f"No data found for date {target}")
+                return JSONResponse({
+                    "data": [],
+                    "maxPrice": 25,
+                    "minPrice": 0,
+                    "dateString": target.strftime("%A %m/%d/%Y"),
+                    "error": "No data available for this date"
+                })
+            
+            # Round min/max prices like Angular component
+            max_price_rounded = max(25, (int(max_price / 5) + 1) * 5)  # Minimum 25
+            min_price_rounded = max(0, int(min_price / 5) * 5)
+            
+            return JSONResponse({
+                "data": chart_data,
+                "maxPrice": max_price_rounded,
+                "minPrice": min_price_rounded,
+                "dateString": target.strftime("%A %m/%d/%Y")
+            })
+        except Exception as e:
+            logger.error(f"Error in chart-data endpoint: {e}")
+            raise HTTPException(status_code=500, detail=f"Error fetching chart data: {str(e)}")
+
     def eur_mwh_to_cents_kwh(eur_per_mwh: float) -> float:
         # 1 MWh = 1000 kWh; EUR/MWh to EUR/kWh then to cents; include VAT
         eur_per_kwh = eur_per_mwh / 1000.0
