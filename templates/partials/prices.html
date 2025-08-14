@@ -63,11 +63,10 @@ window.createChart_{{ chart_date }} = function() {
         chartData.addColumn('number', 'Low Price');
         chartData.addColumn('number', 'Medium Price'); 
         chartData.addColumn('number', 'High Price');
-        chartData.addColumn('number', 'Transmission');
-        chartData.addColumn('number', 'Tax');
+        chartData.addColumn('number', 'Margin');
         
         // Validate data before adding rows
-        const validData = data.data.filter(row => Array.isArray(row) && row.length === 6);
+        const validData = data.data.filter(row => Array.isArray(row) && row.length === 5);
         if (validData.length === 0) {
           chartElement.innerHTML = '<div style="color: white; padding: 20px; text-align: center;">Invalid data format received</div>';
           return;
@@ -115,8 +114,7 @@ window.createChart_{{ chart_date }} = function() {
             0: { color: '#2ecc71' },  // green for low prices
             1: { color: '#f1c40f' },  // yellow for medium prices  
             2: { color: '#e74c3c' },  // red for high prices
-            3: { color: '#666666' },  // gray for transmission
-            4: { color: '#888888' }   // lighter gray for tax
+            3: { color: '#666666' }   // gray for margin
           },
           bar: {
             groupWidth: '70%'

@@ -155,12 +155,10 @@ def create_app() -> FastAPI:
             ],
         })
 
-    async def calculate_global_price_range() -> tuple[float, float]:
+    async def calculate_global_price_range(margin_cents: float) -> tuple[float, float]:
         """Calculate global min/max price range for consistent chart scaling"""
         LOW_PRICE = 5.0  # cents/kWh
         HIGH_PRICE = 15.0  # cents/kWh
-        TRANSMISSION_PRICE = 3.0  # cents/kWh (example fixed value)
-        TAX_PRICE = 2.0  # cents/kWh (example fixed value)
         
         global_max = float('-inf')
         global_min = float('inf')
@@ -182,22 +180,22 @@ def create_app() -> FastAPI:
                 
             for it in dp.intervals:
                 # Convert EUR/MWh to cents/kWh (with VAT included)
-                spot_cents = eur_mwh_to_cents_kwh(it.price_eur_per_mwh)
+                spot_cents_with_vat = eur_mwh_to_cents_kwh(it.price_eur_per_mwh)
                 
                 # Check all the individual components that will be stacked in the chart
-                low_electricity = spot_cents if spot_cents < LOW_PRICE else 0
-                medium_electricity = spot_cents if LOW_PRICE <= spot_cents < HIGH_PRICE else 0  
-                high_electricity = spot_cents if spot_cents >= HIGH_PRICE else 0
+                low_electricity = spot_cents_with_vat if spot_cents_with_vat < LOW_PRICE else 0
+                medium_electricity = spot_cents_with_vat if LOW_PRICE <= spot_cents_with_vat < HIGH_PRICE else 0  
+                high_electricity = spot_cents_with_vat if spot_cents_with_vat >= HIGH_PRICE else 0
                 
-                # Find min/max from all chart components (individual components can be negative)
-                all_values = [low_electricity, medium_electricity, high_electricity, TRANSMISSION_PRICE, TAX_PRICE]
-                global_max = max(global_max, max(all_values))
-                global_min = min(global_min, min(all_values))
+                # Find min/max from spot price components and margin
+                spot_values = [low_electricity, medium_electricity, high_electricity]
+                global_max = max(global_max, max(spot_values))
+                global_min = min(global_min, min(spot_values))
                 
-                # Also check the total stacked value
-                total_price = spot_cents + TRANSMISSION_PRICE + TAX_PRICE
+                # Also check the total stacked value (spot + margin)
+                total_price = spot_cents_with_vat + margin_cents
                 global_max = max(global_max, total_price)
-                global_min = min(global_min, total_price)
+                global_min = min(global_min, min(spot_values))  # Margin doesn't affect minimum
                 
                 intervals_processed += 1
         
@@ -236,7 +234,7 @@ def create_app() -> FastAPI:
             await ensure_cache_now()
             
             # Calculate global price range for consistent scaling
-            global_min_price, global_max_price = await calculate_global_price_range()
+            global_min_price, global_max_price = await calculate_global_price_range(margin_cents)
             
             # Determine which data to use based on the requested date
             now_hel = datetime.now(tz=HELSINKI_TZ)
@@ -263,8 +261,6 @@ def create_app() -> FastAPI:
             
             LOW_PRICE = 5.0  # cents/kWh
             HIGH_PRICE = 15.0  # cents/kWh
-            TRANSMISSION_PRICE = 3.0  # cents/kWh (example fixed value)
-            TAX_PRICE = 2.0  # cents/kWh (example fixed value)
             
             chart_data = []
             
@@ -278,13 +274,13 @@ def create_app() -> FastAPI:
                 if interval_date != target:
                     continue
                 
-                # Convert EUR/MWh to cents/kWh (with VAT included)
-                spot_cents = eur_mwh_to_cents_kwh(it.price_eur_per_mwh)
+                # Convert EUR/MWh to cents/kWh (with VAT already included)
+                spot_cents_with_vat = eur_mwh_to_cents_kwh(it.price_eur_per_mwh)
                 
                 # Split electricity price into low/medium/high buckets like Angular component
-                low_electricity = spot_cents if spot_cents < LOW_PRICE else 0
-                medium_electricity = spot_cents if LOW_PRICE <= spot_cents < HIGH_PRICE else 0  
-                high_electricity = spot_cents if spot_cents >= HIGH_PRICE else 0
+                low_electricity = spot_cents_with_vat if spot_cents_with_vat < LOW_PRICE else 0
+                medium_electricity = spot_cents_with_vat if LOW_PRICE <= spot_cents_with_vat < HIGH_PRICE else 0  
+                high_electricity = spot_cents_with_vat if spot_cents_with_vat >= HIGH_PRICE else 0
                 
                 # Get hour from start time
                 hour_str = str(start_helsinki.hour)
@@ -294,8 +290,7 @@ def create_app() -> FastAPI:
                     low_electricity,
                     medium_electricity, 
                     high_electricity,
-                    TRANSMISSION_PRICE,
-                    TAX_PRICE
+                    margin_cents
                 ])
             
             # Sort chart data by hour to ensure proper order
