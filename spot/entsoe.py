@@ -9,10 +9,12 @@ import xml.etree.ElementTree as ET
 import httpx
 import os
 from decimal import Decimal
+import logging
 
 FI_EIC = "10YFI-1--------U"
 # Allow overriding via env; default to known working host
 ENTSOE_BASE_URL = os.environ.get("ENTSOE_BASE_URL", "https://web-api.tp.entsoe.eu/api")
+logger = logging.getLogger("spot.entsoe")
 
 
 class DataNotAvailable(Exception):
@@ -49,10 +51,17 @@ def _duration_to_granularity(duration: str) -> str:
 def parse_publication_xml(xml_bytes: bytes) -> DaySeries:
     root = ET.fromstring(xml_bytes)
     ns = {"ns": root.tag.split("}")[0].strip("{")}
+    local_name = root.tag.split("}")[-1]
+
+    if local_name.endswith("Acknowledgement_MarketDocument"):
+        # Try to extract reason text for diagnostics
+        reasons = [e.text or "" for e in root.findall(".//ns:Reason/ns:text", ns)]
+        msg = "; ".join([r for r in reasons if r]) or "No TimeSeries (acknowledgement)"
+        raise DataNotAvailable(msg)
 
     ts_list = root.findall(".//ns:TimeSeries", ns)
     if not ts_list:
-        # Many cases: Acknowledgement document, or no content yet
+        # Many cases: No content yet
         raise DataNotAvailable("No TimeSeries in response")
 
     all_points: list[PricePoint] = []
@@ -116,13 +125,21 @@ async def fetch_day_ahead_prices(token: str, target_date: date) -> DaySeries:
         "periodStart": period_start.strftime("%Y%m%d%H%M"),
         "periodEnd": period_end.strftime("%Y%m%d%H%M"),
     }
+    safe_params = {k: v for k, v in params.items() if k != "securityToken"}
+    logger.debug("ENTSO-E GET %s params=%s", ENTSOE_BASE_URL, safe_params)
     async with httpx.AsyncClient(timeout=30) as client:
         r = await client.get(ENTSOE_BASE_URL, params=params)
         if r.status_code == 429:
             await asyncio.sleep(1)
             r = await client.get(ENTSOE_BASE_URL, params=params)
         r.raise_for_status()
-        return parse_publication_xml(r.content)
+        try:
+            return parse_publication_xml(r.content)
+        except DataNotAvailable as e:
+            # Log a short snippet for diagnostics
+            snippet = r.content[:200].decode(errors="ignore")
+            logger.info("ENTSO-E data not available: %s | body: %s", e, snippet)
+            raise
 
 
 def get_prices(token: str, start_date: date, end_date: date) -> t.Generator[tuple[datetime, Decimal], None, None]:
