@@ -134,7 +134,7 @@ window.createChart_{{ chart_date }} = function() {
         // Add ready event listener to draw yellow "now" line for today
         google.visualization.events.addListener(chart, 'ready', function() {
           if (date === 'today') {
-            addNowLine(chart, chartElement);
+            addNowLine(chart, chartElement, validData);
           }
         });
         
@@ -146,8 +146,13 @@ window.createChart_{{ chart_date }} = function() {
       });
   }
   
-  function addNowLine(chart, chartElement) {
+  function addNowLine(chart, chartElement, validData) {
     try {
+      // Check if this chart already has a now line to prevent duplicates
+      if (chartElement.hasAttribute('data-now-line-added')) {
+        return;
+      }
+      
       // Remove any existing now lines to prevent duplicates
       const existingLines = chartElement.querySelectorAll('.now-line');
       existingLines.forEach(line => line.remove());
@@ -170,36 +175,46 @@ window.createChart_{{ chart_date }} = function() {
         return;
       }
       
-      // Calculate position for current hour (0-23)
-      // Find which data point corresponds to current hour
+      // Find the data point index for the current hour
       const currentHourStr = currentHour.toString();
+      let dataPointIndex = validData.findIndex(row => row[0] === currentHourStr);
       
-      // Try to get the exact position of the current hour column
       let lineX;
-      try {
-        // Get the position of the current hour on the x-axis
-        const xPosition = chartLayout.getXLocation(currentHourStr);
-        lineX = xPosition;
-      } catch (e) {
-        // Fallback: calculate based on chart area and hour position
+      
+      if (dataPointIndex >= 0) {
+        // Try to get the exact position using the data point index
+        try {
+          // Get the center position of the column for the current hour
+          lineX = chartLayout.getXLocation(dataPointIndex);
+        } catch (e) {
+          console.warn('getXLocation failed, using fallback calculation');
+          // Fallback calculation
+          const columnWidth = chartArea.width / validData.length;
+          lineX = chartArea.left + (dataPointIndex + 0.5) * columnWidth;
+        }
+      } else {
+        // Hour not found in data, calculate approximate position
         const hourProgress = (currentHour + currentMinutes / 60) / 24;
         lineX = chartArea.left + (chartArea.width * hourProgress);
       }
       
       // Create yellow line
       const nowLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      nowLine.setAttribute('class', 'now-line'); // Add class for easy removal
+      nowLine.setAttribute('class', 'now-line');
       nowLine.setAttribute('x1', lineX.toString());
       nowLine.setAttribute('y1', chartArea.top.toString());
       nowLine.setAttribute('x2', lineX.toString());
       nowLine.setAttribute('y2', (chartArea.top + chartArea.height).toString());
       nowLine.setAttribute('stroke', '#ffcc00');
-      nowLine.setAttribute('stroke-width', '2');
+      nowLine.setAttribute('stroke-width', '4');
       nowLine.setAttribute('opacity', '0.8');
       
       svgElement.appendChild(nowLine);
       
-      console.log('Now line added at hour', currentHour, 'x-position', lineX);
+      // Mark that this chart has a now line
+      chartElement.setAttribute('data-now-line-added', 'true');
+      
+      console.log('Now line added at hour', currentHour, 'data index', dataPointIndex, 'x-position', lineX);
     } catch (error) {
       console.error('Error adding now line:', error);
     }

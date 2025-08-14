@@ -3,24 +3,7 @@
   const toast = d.getElementById('toast');
   const reloadBtn = d.getElementById('reloadNow');
   const countdownEl = d.getElementById('countdown');
-  const nowLine = d.getElementById('nowLine');
 
-  // Maintain yellow "now" line position across the two charts (assumes 24h grid width)
-  function updateNowLine() {
-    const charts = d.querySelector('.charts');
-    const todayChart = d.getElementById('todayChart');
-    if (!charts || !todayChart) return;
-    const rect = todayChart.getBoundingClientRect();
-    const now = new Date();
-    const minutes = now.getMinutes() + now.getHours() * 60;
-    const pct = minutes / (24 * 60);
-    const x = rect.left + rect.width * pct;
-    const pageX = x + window.scrollX - charts.getBoundingClientRect().left;
-    nowLine.style.left = `${pageX}px`;
-  }
-  setInterval(updateNowLine, 60 * 1000);
-  window.addEventListener('resize', updateNowLine);
-  window.addEventListener('load', updateNowLine);
 
   // Keep-awake via Screen Wake Lock API
   const keepAwake = d.getElementById('keepAwake');
