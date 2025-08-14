@@ -1,16 +1,226 @@
 {% set entries = vm.entries %}
 {% set max_total = vm.maxTotal %}
-<section class="chart" aria-label="Prices chart">
-  <div class="chart-head">{% if vm.granularity == 'hour' %}Hourly{% else %}15-min{% endif %}</div>
+{% set chart_date = request.query_params.get('date', 'today') %}
+{% set chart_id = 'googleChart_' ~ chart_date %}
+{% set date_string_id = 'dateString_' ~ chart_date %}
+<section class="chart" aria-label="Prices chart" data-date="{{ chart_date }}" data-margin="{{ request.query_params.get('margin', '0') }}">
+  <div class="chart-head">
+    {{ chart_date|title }}
+    <span class="date-string" id="{{ date_string_id }}"></span>
+  </div>
   <div class="chart-body">
-    <div class="chart-placeholder" style="grid-template-columns: repeat({{ entries|length }}, 1fr)">
-      {% for e in entries %}
-      {% set height = (e.totalCents / max_total) * 100 %}
-      <div class="bar" style="height: {{ '%.2f' % height }}%">
-        <div class="spot" style="height: {{ '%.2f' % (e.spotCents / e.totalCents * 100 if e.totalCents else 0) }}%; background: {% if e.color == 'green' %}#2ecc71{% elif e.color == 'yellow' %}#f1c40f{% else %}#e74c3c{% endif %};"></div>
-        <div class="margin" style="height: {{ '%.2f' % (e.marginCents / e.totalCents * 100 if e.totalCents else 0) }}%"></div>
-      </div>
-      {% endfor %}
-    </div>
+    <div id="{{ chart_id }}" style="width: 100%; height: 400px;"></div>
   </div>
 </section>
+
+<script>
+// Create chart for {{ chart_date }}
+window.createChart_{{ chart_date }} = function() {
+  const date = '{{ chart_date }}';
+  const margin = '{{ request.query_params.get('margin', '0') }}';
+  const chartElement = document.getElementById('{{ chart_id }}');
+  const dateStringEl = document.getElementById('{{ date_string_id }}');
+  
+  if (!chartElement) {
+    console.error('Chart element not found:', '{{ chart_id }}');
+    return;
+  }
+  
+  console.log('Creating chart for:', date, 'margin:', margin);
+  
+  function drawChart() {
+    // Convert date to proper format for API
+    let dateStr;
+    if (date === 'today') {
+      dateStr = new Date().toISOString().split('T')[0];
+    } else if (date === 'tomorrow') {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      dateStr = tomorrow.toISOString().split('T')[0];
+    } else {
+      dateStr = date;
+    }
+    
+    fetch(`/api/chart-data?date_str=${dateStr}&margin=${margin}`)
+      .then(response => response.json())
+      .then(data => {
+        console.log('Chart data received for', date, ':', data);
+        
+        // Update date string
+        if (dateStringEl) {
+          dateStringEl.textContent = ` - ${data.dateString}`;
+        }
+        
+        // Handle case where no data is available
+        if (!data.data || data.data.length === 0) {
+          chartElement.innerHTML = '<div style="color: white; padding: 20px; text-align: center;">No data available for this date</div>';
+          return;
+        }
+        
+        // Create Google Charts data table
+        const chartData = new google.visualization.DataTable();
+        chartData.addColumn('string', 'Time');
+        chartData.addColumn('number', 'Low Price');
+        chartData.addColumn('number', 'Medium Price'); 
+        chartData.addColumn('number', 'High Price');
+        chartData.addColumn('number', 'Transmission');
+        chartData.addColumn('number', 'Tax');
+        
+        // Validate data before adding rows
+        const validData = data.data.filter(row => Array.isArray(row) && row.length === 6);
+        if (validData.length === 0) {
+          chartElement.innerHTML = '<div style="color: white; padding: 20px; text-align: center;">Invalid data format received</div>';
+          return;
+        }
+        
+        chartData.addRows(validData);
+        
+        // Chart options similar to Angular component
+        const options = {
+          title: '',
+          hAxis: {
+            title: 'Hour',
+            textStyle: {
+              fontSize: 12,
+              color: 'white'
+            },
+            titleTextStyle: {
+              color: 'white'
+            }
+          },
+          vAxis: {
+            title: 'Price (cnt/kWh)',
+            minValue: data.minPrice,
+            maxValue: data.maxPrice,
+            textStyle: {
+              fontSize: 12,
+              color: 'white'
+            },
+            titleTextStyle: {
+              color: 'white'
+            }
+          },
+          isStacked: true,
+          legend: 'none',
+          width: '100%',
+          height: 400,
+          chartArea: { 
+            width: '85%', 
+            height: '75%',
+            top: 20,
+            left: 60
+          },
+          backgroundColor: 'black',
+          series: {
+            0: { color: '#2ecc71' },  // green for low prices
+            1: { color: '#f1c40f' },  // yellow for medium prices  
+            2: { color: '#e74c3c' },  // red for high prices
+            3: { color: '#666666' },  // gray for transmission
+            4: { color: '#888888' }   // lighter gray for tax
+          },
+          bar: {
+            groupWidth: '70%'
+          },
+          tooltip: {
+            textStyle: { 
+              fontSize: 14,
+              color: 'black'
+            }
+          }
+        };
+        
+        const chart = new google.visualization.ColumnChart(chartElement);
+        
+        // Add ready event listener to draw yellow "now" line for today
+        google.visualization.events.addListener(chart, 'ready', function() {
+          if (date === 'today') {
+            addNowLine(chart, chartElement);
+          }
+        });
+        
+        chart.draw(chartData, options);
+      })
+      .catch(error => {
+        console.error('Error fetching chart data:', error);
+        chartElement.innerHTML = '<div style="color: white; padding: 20px;">Error loading chart data</div>';
+      });
+  }
+  
+  function addNowLine(chart, chartElement) {
+    try {
+      // Remove any existing now lines to prevent duplicates
+      const existingLines = chartElement.querySelectorAll('.now-line');
+      existingLines.forEach(line => line.remove());
+      
+      // Get current time
+      const now = new Date();
+      const currentHour = now.getHours();
+      const currentMinutes = now.getMinutes();
+      
+      // Find the SVG element in the chart
+      const svgElement = chartElement.querySelector('svg');
+      if (!svgElement) return;
+      
+      // Use Google Charts' getChartLayoutInterface to get precise positioning
+      const chartLayout = chart.getChartLayoutInterface();
+      const chartArea = chartLayout.getChartAreaBoundingBox();
+      
+      if (!chartArea) {
+        console.warn('Could not get chart area bounding box');
+        return;
+      }
+      
+      // Calculate position for current hour (0-23)
+      // Find which data point corresponds to current hour
+      const currentHourStr = currentHour.toString();
+      
+      // Try to get the exact position of the current hour column
+      let lineX;
+      try {
+        // Get the position of the current hour on the x-axis
+        const xPosition = chartLayout.getXLocation(currentHourStr);
+        lineX = xPosition;
+      } catch (e) {
+        // Fallback: calculate based on chart area and hour position
+        const hourProgress = (currentHour + currentMinutes / 60) / 24;
+        lineX = chartArea.left + (chartArea.width * hourProgress);
+      }
+      
+      // Create yellow line
+      const nowLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      nowLine.setAttribute('class', 'now-line'); // Add class for easy removal
+      nowLine.setAttribute('x1', lineX.toString());
+      nowLine.setAttribute('y1', chartArea.top.toString());
+      nowLine.setAttribute('x2', lineX.toString());
+      nowLine.setAttribute('y2', (chartArea.top + chartArea.height).toString());
+      nowLine.setAttribute('stroke', '#ffcc00');
+      nowLine.setAttribute('stroke-width', '2');
+      nowLine.setAttribute('opacity', '0.8');
+      
+      svgElement.appendChild(nowLine);
+      
+      console.log('Now line added at hour', currentHour, 'x-position', lineX);
+    } catch (error) {
+      console.error('Error adding now line:', error);
+    }
+  }
+  
+  // Initialize chart
+  if (typeof google !== 'undefined' && google.charts) {
+    google.charts.load('current', {packages: ['corechart']});
+    google.charts.setOnLoadCallback(drawChart);
+  } else {
+    // If Google Charts isn't loaded yet, wait for it
+    const checkGoogle = setInterval(() => {
+      if (typeof google !== 'undefined' && google.charts) {
+        clearInterval(checkGoogle);
+        google.charts.load('current', {packages: ['corechart']});
+        google.charts.setOnLoadCallback(drawChart);
+      }
+    }, 100);
+  }
+};
+
+// Execute the chart creation function immediately
+window.createChart_{{ chart_date }}();
+</script>
