@@ -79,4 +79,12 @@
     } catch {}
   }
   beginVersionWatch();
+
+  // Global function to refresh charts
+  window.refreshCharts = function() {
+    // Trigger HTMX refresh for both charts
+    const margin = d.body.getAttribute('data-default-margin') || '0';
+    htmx.ajax('GET', `/partials/prices?date=today&margin=${margin}`, {target: '#todayChart', swap: 'outerHTML'});
+    htmx.ajax('GET', `/partials/prices?date=tomorrow&margin=${margin}`, {target: '#tomorrowChart', swap: 'outerHTML'});
+  };
 })();
