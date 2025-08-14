@@ -1,4 +1,14 @@
-# Project Rules and Decisions
+# Project Rules
+
+## Testing Rules
+- **Never try to test the UI or start web servers for testing purposes**, as this always leads to getting stuck with hanging processes
+- When functional behavior needs to be tested (like API endpoints, UI interactions, etc.), **ask the user to test it instead**
+- Only test code compilation/syntax and basic Python imports, not runtime behavior
+
+## Development Guidelines
+- Focus on implementing the requested features correctly
+- Provide clear instructions to the user for testing when needed
+- Use static analysis and code review instead of runtime testing and Decisions
 
 Source of truth for scope and decisions. This file must be kept up to date as the project evolves. All changes to scope or behavior must be reflected here.
 
