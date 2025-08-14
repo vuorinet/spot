@@ -76,6 +76,19 @@
 
   // Global function to refresh charts
   window.refreshCharts = function() {
+    // Clean up any existing now line timers before refresh
+    const todayChartElement = d.querySelector('#todayChart [id*="googleChart"]');
+    const tomorrowChartElement = d.querySelector('#tomorrowChart [id*="googleChart"]');
+    
+    if (todayChartElement && todayChartElement._nowLineTimer) {
+      clearInterval(todayChartElement._nowLineTimer);
+      delete todayChartElement._nowLineTimer;
+    }
+    if (tomorrowChartElement && tomorrowChartElement._nowLineTimer) {
+      clearInterval(tomorrowChartElement._nowLineTimer);
+      delete tomorrowChartElement._nowLineTimer;
+    }
+    
     // Trigger HTMX refresh for both charts
     const margin = d.body.getAttribute('data-default-margin') || '0';
     htmx.ajax('GET', `/partials/prices?date=today&margin=${margin}`, {target: '#todayChart', swap: 'outerHTML'});

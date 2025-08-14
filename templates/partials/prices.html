@@ -134,6 +134,8 @@ window.createChart_{{ chart_date }} = function() {
         google.visualization.events.addListener(chart, 'ready', function() {
           if (date === 'today') {
             addNowLine(chart, chartElement, validData);
+            // Set up timer to update the now line every minute
+            startNowLineTimer(chart, chartElement, validData);
           }
         });
         
@@ -145,13 +147,36 @@ window.createChart_{{ chart_date }} = function() {
       });
   }
   
-  function addNowLine(chart, chartElement, validData) {
+  function startNowLineTimer(chart, chartElement, validData) {
+    // Update the now line every minute
+    const timer = setInterval(() => {
+      updateNowLine(chart, chartElement, validData);
+    }, 60000); // 60 seconds
+    
+    // Store timer reference for cleanup
+    chartElement._nowLineTimer = timer;
+  }
+
+  function updateNowLine(chart, chartElement, validData) {
     try {
-      // Check if this chart already has a now line to prevent duplicates
-      if (chartElement.hasAttribute('data-now-line-added')) {
-        return;
-      }
+      // Remove existing now lines
+      const existingLines = chartElement.querySelectorAll('.now-line');
+      existingLines.forEach(line => line.remove());
       
+      // Add new now line at current position
+      addNowLineInternal(chart, chartElement, validData);
+    } catch (error) {
+      console.error('Error updating now line:', error);
+    }
+  }
+
+  function addNowLine(chart, chartElement, validData) {
+    // Initial draw - just call the internal function
+    addNowLineInternal(chart, chartElement, validData);
+  }
+
+  function addNowLineInternal(chart, chartElement, validData) {
+    try {
       // Remove any existing now lines to prevent duplicates
       const existingLines = chartElement.querySelectorAll('.now-line');
       existingLines.forEach(line => line.remove());
@@ -210,10 +235,7 @@ window.createChart_{{ chart_date }} = function() {
       
       svgElement.appendChild(nowLine);
       
-      // Mark that this chart has a now line
-      chartElement.setAttribute('data-now-line-added', 'true');
-      
-      console.log('Now line added at hour', currentHour, 'data index', dataPointIndex, 'x-position', lineX);
+      console.log('Now line positioned at hour', currentHour, 'data index', dataPointIndex, 'x-position', lineX);
     } catch (error) {
       console.error('Error adding now line:', error);
     }
