@@ -8,7 +8,7 @@
     <script defer src="/static/js/htmx.min.js"></script>
     <script defer src="/static/js/main.js"></script>
   </head>
-  <body data-app-version="{{ os_environ.get('SPOT_VERSION', 'dev') }}" data-default-margin="{{ '%.3f' % (margin_cents or 0.0) }}">
+  <body data-app-version="{{ app_version }}" data-default-margin="{{ '%.3f' % (margin_cents or 0.0) }}">
     <header class="app-header">
       <h1>Spot is a dog</h1>
       <div class="controls">

@@ -133,6 +133,7 @@ def create_app() -> FastAPI:
             "request": request,
             "app_name": "Spot is a dog",
             "margin_cents": margin if margin is not None else DEFAULT_MARGIN_CENTS_PER_KWH,
+            "app_version": os.environ.get("SPOT_VERSION", "dev"),
         })
 
     @app.get("/api/prices", response_class=JSONResponse)
