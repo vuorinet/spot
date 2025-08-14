@@ -30,13 +30,14 @@ window.createChart_{{ chart_date }} = function() {
   
   function drawChart() {
     // Convert date to proper format for API
+    // Let the server handle timezone conversion - just send today/tomorrow as strings
     let dateStr;
     if (date === 'today') {
-      dateStr = new Date().toISOString().split('T')[0];
+      dateStr = 'today';
+      console.log('Today chart requesting: today');
     } else if (date === 'tomorrow') {
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      dateStr = tomorrow.toISOString().split('T')[0];
+      dateStr = 'tomorrow';
+      console.log('Tomorrow chart requesting: tomorrow');
     } else {
       dateStr = date;
     }

@@ -109,20 +109,40 @@ def create_app() -> FastAPI:
         # Minimal: populate today and attempt tomorrow
         now_hel = datetime.now(tz=HELSINKI_TZ)
         today_d = now_hel.date()
-        if cache.today is None or cache.today.intervals[0].start_utc.date() != today_d:
-            logger.info("Fetching today's prices for %s", today_d)
+        logger.debug(f"ensure_cache_now() called for {today_d}")
+        
+        # Check if we need to fetch today's data
+        need_today = True
+        if cache.today is not None:
+            # Check if any interval in cached data matches today's date
+            for interval in cache.today.intervals:
+                interval_date = interval.start_utc.astimezone(HELSINKI_TZ).date()
+                if interval_date == today_d:
+                    need_today = False
+                    break
+        
+        if need_today:
+            logger.info("Cache miss: Fetching today's prices for %s", today_d)
             try:
                 cache.today = await fetch_prices_for_day(today_d)
+                logger.info("Successfully cached today's prices (%d intervals)", len(cache.today.intervals))
             except DataNotAvailable:
                 logger.info("Today's prices not available yet; will retry")
                 cache.today = None
+        else:
+            logger.info("Cache hit: Using cached today's prices (%d intervals)", len(cache.today.intervals))
+            
         if cache.tomorrow is None:
-            logger.info("Attempting to prefetch tomorrow's prices for %s", today_d + timedelta(days=1))
+            logger.debug("Cache miss: Attempting to prefetch tomorrow's prices for %s", today_d + timedelta(days=1))
             try:
                 cache.tomorrow = await fetch_prices_for_day(today_d + timedelta(days=1))
+                logger.info("Successfully cached tomorrow's prices (%d intervals)", len(cache.tomorrow.intervals))
             except DataNotAvailable:
-                logger.info("Tomorrow's prices not available yet")
+                logger.debug("Tomorrow's prices not available yet")
                 cache.tomorrow = None
+        else:
+            logger.info("Cache hit: Using cached tomorrow's prices (%d intervals)", len(cache.tomorrow.intervals))
+            
         cache.last_refresh_utc = datetime.now(timezone.utc)
 
     @app.get("/", response_class=HTMLResponse)
@@ -226,9 +246,19 @@ def create_app() -> FastAPI:
     async def api_chart_data(date_str: str, margin: float | None = Query(default=None)) -> JSONResponse:
         """API endpoint that provides data in Google Charts format like the Angular component"""
         try:
-            target = datetime.fromisoformat(date_str).date()
             margin_cents = margin if margin is not None else DEFAULT_MARGIN_CENTS_PER_KWH
-            logger.debug("/api/chart-data date=%s margin=%.3f", target, margin_cents)
+            
+            # Handle special date strings and convert to actual dates in Helsinki timezone
+            now_hel = datetime.now(tz=HELSINKI_TZ)
+            if date_str == 'today':
+                target = now_hel.date()
+                logger.debug("/api/chart-data date=today (%s) margin=%.3f", target, margin_cents)
+            elif date_str == 'tomorrow':
+                target = (now_hel + timedelta(days=1)).date()
+                logger.debug("/api/chart-data date=tomorrow (%s) margin=%.3f", target, margin_cents)
+            else:
+                target = datetime.fromisoformat(date_str).date()
+                logger.debug("/api/chart-data date=%s margin=%.3f", target, margin_cents)
             
             # Get all available data from cache first
             await ensure_cache_now()
@@ -241,22 +271,16 @@ def create_app() -> FastAPI:
             today_date = now_hel.date()
             tomorrow_date = today_date + timedelta(days=1)
             
-            if target == today_date:
-                if cache.today:
-                    dp = cache.today
-                else:
-                    # Ensure today's cache is populated
-                    await ensure_cache_now()
-                    dp = cache.today or await fetch_prices_for_day(target)
-            elif target == tomorrow_date:
-                if cache.tomorrow:
-                    dp = cache.tomorrow
-                else:
-                    # Ensure tomorrow's cache is populated if possible
-                    await ensure_cache_now()
-                    dp = cache.tomorrow or await fetch_prices_for_day(target)
+            # Use cache data directly - cache should already be populated by ensure_cache_now()
+            if target == today_date and cache.today:
+                logger.debug(f"Using today's cache for {target}")
+                dp = cache.today
+            elif target == tomorrow_date and cache.tomorrow:
+                logger.debug(f"Using tomorrow's cache for {target}")
+                dp = cache.tomorrow
             else:
-                # Fallback to direct fetch for other dates
+                # Only fetch directly if not today/tomorrow or cache miss
+                logger.warning(f"Cache miss for {target}, fetching directly from ENTSO-E")
                 dp = await fetch_prices_for_day(target)
             
             LOW_PRICE = 5.0  # cents/kWh
