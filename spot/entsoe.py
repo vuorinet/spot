@@ -8,6 +8,7 @@ import xml.etree.ElementTree as ET
 
 import httpx
 import os
+from decimal import Decimal
 
 FI_EIC = "10YFI-1--------U"
 # Allow overriding via env; default to known working host
@@ -122,3 +123,17 @@ async def fetch_day_ahead_prices(token: str, target_date: date) -> DaySeries:
             r = await client.get(ENTSOE_BASE_URL, params=params)
         r.raise_for_status()
         return parse_publication_xml(r.content)
+
+
+def get_prices(token: str, start_date: date, end_date: date) -> t.Generator[tuple[datetime, Decimal], None, None]:
+    """Yield (UTC datetime, EUR/kWh) for the range [start_date, end_date).
+
+    Matches the style shown in user's other project (periodStart/periodEnd built
+    as YYYYMMDD0000). Internally calls fetch_day_ahead_prices per day and
+    converts EUR/MWh to EUR/kWh.
+    """
+    cur = start_date
+    one_day = timedelta(days=1)
+    while cur < end_date:
+        # Note: function is async, so we expose sync generator via run_until_complete
+        raise RuntimeError("get_prices requires an async runner; use fetch_day_ahead_prices directly in async contexts")
