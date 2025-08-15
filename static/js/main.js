@@ -74,6 +74,72 @@
   }
   beginVersionWatch();
 
+  // Function to update yellow line immediately
+  window.updateNowLineImmediately = function() {
+    const todayChartElement = d.querySelector('#todayChart [id*="googleChart"]');
+    if (todayChartElement && todayChartElement._chart && todayChartElement._validData && window.addNowLine) {
+      console.log('Updating yellow line immediately due to focus/visibility change');
+      // Remove existing line
+      const svgElement = todayChartElement.querySelector('svg');
+      if (svgElement) {
+        const existingLines = svgElement.querySelectorAll('.now-line');
+        existingLines.forEach(line => line.remove());
+      }
+      // Add new line at current time
+      window.addNowLine(todayChartElement._chart, todayChartElement, todayChartElement._validData);
+    }
+  };
+
+  // Function to hide yellow line when window goes to background
+  window.hideNowLine = function() {
+    const todayChartElement = d.querySelector('#todayChart [id*="googleChart"]');
+    if (todayChartElement) {
+      console.log('Hiding yellow line - window in background');
+      const svgElement = todayChartElement.querySelector('svg');
+      if (svgElement) {
+        const existingLines = svgElement.querySelectorAll('.now-line');
+        existingLines.forEach(line => line.remove());
+      }
+    }
+  };
+
+  // Listen for window focus and visibility changes
+  window.addEventListener('focus', () => {
+    console.log('Window focused - updating yellow line');
+    window.updateNowLineImmediately();
+  });
+
+  // Note: We don't hide on blur because the window might still be visible
+  // (e.g., side-by-side windows on desktop). Only hide when actually not visible.
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+      console.log('Document became visible - updating yellow line');
+      window.updateNowLineImmediately();
+    } else {
+      console.log('Document became hidden - hiding yellow line');
+      window.hideNowLine();
+    }
+  });
+
+  // Listen for wake lock events (when screen is re-enabled)
+  if ('wakeLock' in navigator) {
+    // Unfortunately, there's no direct wake lock event, but we can detect when
+    // the page regains focus after potential screen sleep
+    let wasHidden = false;
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        wasHidden = true;
+      } else if (wasHidden) {
+        console.log('Screen likely re-enabled - updating yellow line');
+        setTimeout(() => {
+          window.updateNowLineImmediately();
+        }, 100); // Small delay to ensure everything is ready
+        wasHidden = false;
+      }
+    });
+  }
+
   // Global function to refresh charts
   window.refreshCharts = function() {
     // Clean up any existing now line timers before refresh

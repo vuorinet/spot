@@ -159,6 +159,12 @@ window.createChart_{{ chart_date }} = function() {
 
   function updateNowLine(chart, chartElement, validData) {
     try {
+      // Only update if the document is visible (window is in foreground)
+      if (document.hidden) {
+        console.log('Skipping now line update - document is hidden');
+        return;
+      }
+      
       // Remove existing now lines
       const existingLines = chartElement.querySelectorAll('.now-line');
       existingLines.forEach(line => line.remove());
