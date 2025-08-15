@@ -138,6 +138,8 @@ def create_app() -> FastAPI:
         if data:
             event_data.update(data)
         
+        logger.info(f"Sending cache event to {len(cache_event_callbacks)} clients: {event_type}")
+        
         # Call all registered callbacks (WebSocket/SSE connections)
         for callback in cache_event_callbacks[:]:  # Copy list to avoid modification during iteration
             try:
@@ -494,22 +496,97 @@ def create_app() -> FastAPI:
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, 300)
 
-        async def poll_for_tomorrow_loop():
+        async def intelligent_polling_loop():
+            """Intelligent polling that adapts based on data availability and time"""
+            consecutive_failures = 0
+            last_failure_time = None
+            
             while True:
                 now = datetime.now(tz=HELSINKI_TZ)
-                # Start polling from 13:50 to 14:30 if tomorrow not yet present
-                if (now.hour == 13 and now.minute >= 50) or (now.hour == 14 and cache.tomorrow is None):
-                    logger.info("Polling ENTSO-E for tomorrow's prices (%s)", (now + timedelta(days=1)).date())
-                    try:
-                        old_tomorrow = cache.tomorrow
-                        await ensure_cache_now()  # This will fetch tomorrow if needed and notify
-                        if old_tomorrow is None and cache.tomorrow is not None:
-                            logger.info("Successfully retrieved tomorrow's prices during polling window")
-                    except Exception:
-                        logger.exception("Polling attempt failed")
-                    await asyncio.sleep(60)
+                today_d = now.date()
+                tomorrow_d = today_d + timedelta(days=1)
+                
+                # Assess current data state with date validation
+                has_today = cache.today is not None and any(
+                    it.start_utc.astimezone(HELSINKI_TZ).date() == today_d 
+                    for it in cache.today.intervals
+                ) if cache.today else False
+                
+                has_tomorrow = cache.tomorrow is not None and any(
+                    it.start_utc.astimezone(HELSINKI_TZ).date() == tomorrow_d 
+                    for it in cache.tomorrow.intervals  
+                ) if cache.tomorrow else False
+                
+                # Determine urgency based on missing critical data
+                missing_today = not has_today
+                missing_tomorrow_after_2pm = not has_tomorrow and now.hour >= 14
+                
+                # Apply exponential backoff for persistent failures
+                base_interval = 60
+                if consecutive_failures > 0:
+                    backoff_multiplier = min(2 ** consecutive_failures, 16)  # Cap at 16x
+                    logger.debug(f"Applying backoff multiplier {backoff_multiplier}x due to {consecutive_failures} consecutive failures")
                 else:
-                    await asyncio.sleep(30)
+                    backoff_multiplier = 1
+                
+                # Calculate polling interval based on situation
+                if missing_today:
+                    # Critical: Missing today's data - aggressive polling with backoff
+                    base_interval = 60  # 1 minute base
+                    poll_interval = base_interval * backoff_multiplier
+                    logger.warning(f"Missing today's data ({today_d}) - polling every {poll_interval}s")
+                elif missing_tomorrow_after_2pm:
+                    # Important: Missing tomorrow's data after expected publication
+                    base_interval = 300  # 5 minutes base
+                    poll_interval = base_interval * backoff_multiplier
+                    logger.warning(f"Missing tomorrow's data ({tomorrow_d}) after 14:00 - polling every {poll_interval}s")
+                elif not has_tomorrow and ((now.hour == 13 and now.minute >= 50) or (now.hour == 14) or (now.hour == 15 and now.minute <= 30)):
+                    # Expected publication window - frequent polling only if we DON'T have tomorrow's data yet
+                    base_interval = 180  # 3 minutes base
+                    poll_interval = base_interval * min(backoff_multiplier, 4)  # Less aggressive backoff
+                    logger.debug("In tomorrow publication window, waiting for data - frequent polling")
+                elif has_today and has_tomorrow:
+                    # All good - infrequent maintenance polling
+                    poll_interval = 900  # 15 minutes (no backoff needed)
+                    logger.debug("All data cached - maintenance polling")
+                else:
+                    # Default case - moderate polling
+                    poll_interval = 600  # 10 minutes (no backoff needed)
+                    logger.debug("Standard polling interval")
+                
+                # Attempt cache update
+                try:
+                    old_today = cache.today
+                    old_tomorrow = cache.tomorrow
+                    
+                    await ensure_cache_now()
+                    
+                    # Log any changes
+                    if old_today is None and cache.today is not None:
+                        logger.info(f"Successfully retrieved today's prices ({today_d})")
+                    if old_tomorrow is None and cache.tomorrow is not None:
+                        logger.info(f"Successfully retrieved tomorrow's prices ({tomorrow_d})")
+                    
+                    # Check for data updates (republications)
+                    if old_tomorrow is not None and cache.tomorrow is not None:
+                        if old_tomorrow.published_at_utc != cache.tomorrow.published_at_utc:
+                            logger.info("Tomorrow's price data was republished")
+                        elif len(old_tomorrow.intervals) != len(cache.tomorrow.intervals):
+                            logger.info("Tomorrow's price data changed (different interval count)")
+                    
+                    # Reset failure counter on success
+                    if consecutive_failures > 0:
+                        logger.info(f"Polling recovered after {consecutive_failures} failures")
+                        consecutive_failures = 0
+                        last_failure_time = None
+                            
+                except Exception as e:
+                    consecutive_failures += 1
+                    last_failure_time = now
+                    logger.exception(f"Polling attempt failed (failure #{consecutive_failures}): {e}")
+                
+                # Sleep until next poll
+                await asyncio.sleep(poll_interval)
 
         async def midnight_cache_rotation_loop():
             """Background task to ensure cache rotation happens at midnight even if no requests come in"""
@@ -529,7 +606,7 @@ def create_app() -> FastAPI:
                 # Sleep a bit to avoid multiple triggers
                 await asyncio.sleep(60)
 
-        asyncio.create_task(poll_for_tomorrow_loop())
+        asyncio.create_task(intelligent_polling_loop())
         asyncio.create_task(midnight_cache_rotation_loop())
 
     @app.on_event("startup")
