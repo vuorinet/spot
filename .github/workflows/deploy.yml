@@ -2,7 +2,7 @@ name: Build and Deploy
 
 on:
   push:
-    branches: [main]
+    branches: [master]  # Fixed from 'main' to 'master'
   workflow_dispatch:
 
 env:
