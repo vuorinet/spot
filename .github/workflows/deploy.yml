@@ -1,0 +1,109 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: spot
+
+jobs:
+  build:
+    name: Build and Push Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to Production
+    runs-on: [self-hosted, linux, x64, servo]
+    needs: build
+    environment: production
+    
+    steps:
+      - name: Create deployment directory
+        run: |
+          sudo mkdir -p /srv/spot
+          sudo chown $USER:$USER /srv/spot
+
+      - name: Write docker-compose.yml
+        run: |
+          cat > /srv/spot/docker-compose.yml << 'EOF'
+          version: "3.9"
+          services:
+            app:
+              image: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:latest
+              restart: unless-stopped
+              environment:
+                ENTSOE_API_TOKEN: ${ENTSOE_API_TOKEN}
+                TZ: Europe/Helsinki
+                DEFAULT_MARGIN_CENTS_PER_KWH: ${DEFAULT_MARGIN_CENTS_PER_KWH:-0}
+                SPOT_VERSION: ${SPOT_VERSION:-latest}
+              ports:
+                - "8000:8000"
+              healthcheck:
+                test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+                interval: 30s
+                timeout: 10s
+                retries: 3
+                start_period: 40s
+              deploy:
+                resources:
+                  limits:
+                    memory: 512M
+                    cpus: '1.0'
+                  reservations:
+                    memory: 256M
+                    cpus: '0.5'
+          EOF
+
+      - name: Write environment file
+        run: |
+          cat > /srv/spot/.env << 'EOF'
+          ENTSOE_API_TOKEN=${{ secrets.ENTSOE_API_TOKEN }}
+          DEFAULT_MARGIN_CENTS_PER_KWH=0
+          SPOT_VERSION=${{ github.sha }}
+          EOF
+
+      - name: Deploy application
+        run: |
+          cd /srv/spot
+          docker compose pull
+          docker compose up -d --force-recreate
+          
+      - name: Clean up old images
+        run: |
+          docker image prune -f
+          
+      - name: Verify deployment
+        run: |
+          sleep 10
+          curl -f http://localhost:8000/healthz || exit 1
+          echo "Deployment successful!"
