@@ -2,10 +2,10 @@
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm AS base
 WORKDIR /app
 COPY pyproject.toml ./
-RUN uv pip install --system --no-cache .
 COPY spot ./spot
 COPY templates ./templates
 COPY static ./static
+RUN uv pip install --system --no-cache .
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 ENV TZ=Europe/Helsinki
 EXPOSE 8000
