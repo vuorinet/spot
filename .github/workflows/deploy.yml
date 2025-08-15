@@ -48,6 +48,10 @@ jobs:
     environment: production
     
     steps:
+      - name: Log in to Container Registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
+
       - name: Create deployment directory
         run: |
           sudo mkdir -p /srv/spot
