@@ -173,21 +173,50 @@
     }
   }, 5 * 60 * 1000); // 5 minutes
 
-  // Handle orientation changes and window resize for responsive charts
+  // Handle orientation changes and significant window resize for responsive charts
   let resizeTimeout;
+  let lastWidth = window.innerWidth;
+  let lastHeight = window.innerHeight;
+  
   function handleResize() {
     clearTimeout(resizeTimeout);
     resizeTimeout = setTimeout(() => {
-      console.log('Window resized or orientation changed - redrawing existing charts');
-      // Just redraw existing charts without reloading data
-      window.redrawCharts();
-    }, 300); // Debounce resize events
+      const currentWidth = window.innerWidth;
+      const currentHeight = window.innerHeight;
+      
+      // Only redraw if there's a significant size change (not just scroll-related viewport changes)
+      const widthDiff = Math.abs(currentWidth - lastWidth);
+      const heightDiff = Math.abs(currentHeight - lastHeight);
+      
+      // Threshold for significant changes (more than 50px change or 10% change)
+      const significantWidthChange = widthDiff > 50 || widthDiff / lastWidth > 0.1;
+      const significantHeightChange = heightDiff > 100 || heightDiff / lastHeight > 0.15; // Higher threshold for height (mobile browser UI)
+      
+      if (significantWidthChange || significantHeightChange) {
+        console.log(`Significant resize detected: ${lastWidth}x${lastHeight} → ${currentWidth}x${currentHeight}`);
+        console.log('Redrawing charts for layout change');
+        
+        // Update stored dimensions
+        lastWidth = currentWidth;
+        lastHeight = currentHeight;
+        
+        // Redraw charts without reloading data
+        window.redrawCharts();
+      } else {
+        console.log(`Minor resize ignored: ${lastWidth}x${lastHeight} → ${currentWidth}x${currentHeight}`);
+      }
+    }, 500); // Longer debounce to avoid scroll-related triggers
   }
 
   window.addEventListener('resize', handleResize);
   window.addEventListener('orientationchange', () => {
-    // Small delay to ensure orientation change is complete
-    setTimeout(handleResize, 100);
+    console.log('Orientation change detected');
+    // Always redraw on orientation change, but with a delay
+    setTimeout(() => {
+      lastWidth = window.innerWidth;
+      lastHeight = window.innerHeight;
+      window.redrawCharts();
+    }, 200);
   });
 
   // Add HTMX event listeners for debugging chart swaps
