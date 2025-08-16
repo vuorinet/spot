@@ -79,7 +79,7 @@
   // Function to update yellow line immediately
   window.updateNowLineImmediately = function() {
     const todayChartElement = d.querySelector('#todayChart [id*="googleChart"]');
-    if (todayChartElement && todayChartElement._chart && todayChartElement._validData && window.addNowLine) {
+    if (todayChartElement && todayChartElement._chartInstance && todayChartElement._validData && window.addNowLine) {
       console.log('Updating yellow line immediately due to focus/visibility change');
       // Remove existing line
       const svgElement = todayChartElement.querySelector('svg');
@@ -88,7 +88,7 @@
         existingLines.forEach(line => line.remove());
       }
       // Add new line at current time
-      window.addNowLine(todayChartElement._chart, todayChartElement, todayChartElement._validData);
+      window.addNowLine(todayChartElement._chartInstance, todayChartElement, todayChartElement._validData);
     }
   };
 

@@ -403,6 +403,18 @@ window.createChart_{{ chart_date }} = function() {
     
     // Store timer reference for cleanup
     chartElement._nowLineTimer = timer;
+    
+    // Add visibility change listener to update now line when tab becomes visible
+    const visibilityHandler = () => {
+      if (!document.hidden) {
+        console.log('Tab became visible - updating now line immediately');
+        updateNowLine(chart, chartElement, validData);
+      }
+    };
+    
+    // Store handler reference for cleanup
+    chartElement._visibilityHandler = visibilityHandler;
+    document.addEventListener('visibilitychange', visibilityHandler);
   }
 
   function updateNowLine(chart, chartElement, validData) {
