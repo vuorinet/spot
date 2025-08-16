@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import asyncio
 from datetime import date, datetime, timedelta, timezone
 import json
@@ -126,8 +126,10 @@ def create_app() -> FastAPI:
     from .entsoe import fetch_day_ahead_prices, DataNotAvailable
 
     async def fetch_prices_for_day(target_date: date) -> DayPrices:
+        logger.info(f"Fetching prices for date: {target_date} (Helsinki time: {datetime.now(tz=HELSINKI_TZ)})")
         ds = await fetch_day_ahead_prices(ENTSOE_API_TOKEN, target_date)
         intervals = [PriceInterval(p.start_utc, p.end_utc, p.price_eur_per_mwh) for p in ds.points]
+        logger.info(f"Fetched {len(intervals)} intervals for {target_date}, first interval: {intervals[0].start_utc.astimezone(HELSINKI_TZ) if intervals else 'None'}")
         return DayPrices(market=ds.market, granularity=ds.granularity, intervals=intervals, published_at_utc=ds.published_at_utc)
 
     # Cache event callbacks for notifying browsers
@@ -154,24 +156,43 @@ def create_app() -> FastAPI:
         # Minimal: populate today and attempt tomorrow
         now_hel = datetime.now(tz=HELSINKI_TZ)
         today_d = now_hel.date()
-        logger.debug(f"ensure_cache_now() called for {today_d}")
+        logger.info(f"ensure_cache_now() called for {today_d} at Helsinki time {now_hel}")
         
-        # Check if we need to rotate cache at midnight
+        # Check if we need to rotate cache at midnight or clean up contaminated data
         cache_rotated = False
         if cache.today is not None:
-            # Check if cached "today" data is actually from yesterday
+            # Check if cached "today" data contains the right date
             today_intervals = [it for it in cache.today.intervals 
                              if it.start_utc.astimezone(HELSINKI_TZ).date() == today_d]
-            if not today_intervals and cache.tomorrow is not None:
-                # Check if "tomorrow" data is actually today's data now
-                tomorrow_intervals = [it for it in cache.tomorrow.intervals 
-                                    if it.start_utc.astimezone(HELSINKI_TZ).date() == today_d]
-                if tomorrow_intervals:
-                    logger.info("Midnight transition: rotating tomorrow's cache to today")
-                    cache.today = cache.tomorrow
-                    cache.tomorrow = None
-                    cache_rotated = True
-                    await notify_cache_event("cache_rotated", {"new_today": today_d.isoformat()})
+            total_intervals = len(cache.today.intervals)
+            logger.debug(f"Today cache: {len(today_intervals)}/{total_intervals} intervals match {today_d}")
+            
+            # If cache is contaminated (contains wrong dates) or empty for today, fix it
+            if len(today_intervals) == 0:
+                # No intervals for today - try to rotate from tomorrow
+                if cache.tomorrow is not None:
+                    tomorrow_intervals = [it for it in cache.tomorrow.intervals 
+                                        if it.start_utc.astimezone(HELSINKI_TZ).date() == today_d]
+                    logger.debug(f"Tomorrow intervals matching {today_d}: {len(tomorrow_intervals)}")
+                    if tomorrow_intervals:
+                        logger.info(f"Midnight transition: rotating tomorrow's cache to today ({today_d})")
+                        # Create clean cache with only today's intervals
+                        cache.today = replace(cache.tomorrow, intervals=tomorrow_intervals)
+                        cache.tomorrow = None
+                        cache_rotated = True
+                        await notify_cache_event("cache_rotated", {"new_today": today_d.isoformat()})
+                    else:
+                        logger.warning(f"No tomorrow intervals match today's date {today_d}")
+                        cache.today = None  # Clear contaminated cache
+                else:
+                    logger.warning(f"No today intervals and no tomorrow cache to rotate from")
+                    cache.today = None  # Clear contaminated cache
+            elif len(today_intervals) != total_intervals:
+                # Cache is contaminated with intervals from other dates - clean it
+                logger.info(f"Cleaning contaminated today cache: keeping {len(today_intervals)}/{total_intervals} intervals for {today_d}")
+                cache.today = replace(cache.today, intervals=today_intervals)
+            else:
+                logger.debug(f"Today cache is clean: {len(today_intervals)} intervals for {today_d}")
         
         # Check if we need to fetch today's data
         need_today = True
@@ -670,16 +691,19 @@ def create_app() -> FastAPI:
             """Background task to ensure cache rotation happens at midnight even if no requests come in"""
             while True:
                 now = datetime.now(tz=HELSINKI_TZ)
-                # Calculate seconds until next midnight
-                next_midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+                # Calculate seconds until next midnight in Helsinki timezone
+                # Get the next day and create midnight properly with timezone
+                next_day = now.date() + timedelta(days=1)
+                next_midnight = datetime.combine(next_day, datetime.min.time(), tzinfo=HELSINKI_TZ)
                 seconds_until_midnight = (next_midnight - now).total_seconds()
                 
                 # Sleep until midnight (with small buffer)
                 await asyncio.sleep(max(1, seconds_until_midnight - 30))
                 
                 # Check cache rotation at midnight
-                logger.info("Midnight timer: checking cache rotation")
+                logger.info(f"Midnight timer: checking cache rotation at {datetime.now(tz=HELSINKI_TZ)}")
                 await ensure_cache_now()
+                logger.info("Midnight cache rotation check completed")
                 
                 # Sleep a bit to avoid multiple triggers
                 await asyncio.sleep(60)

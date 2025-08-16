@@ -125,6 +125,7 @@ async def fetch_day_ahead_prices(token: str, target_date: date) -> DaySeries:
     # Convert to UTC for the API request
     period_start = period_start_local.astimezone(timezone.utc)
     period_end = period_end_local.astimezone(timezone.utc)
+    logger.info(f"UTC conversion: {period_start} to {period_end}")
     params = {
         "securityToken": token,
         "documentType": "A44",
@@ -135,7 +136,8 @@ async def fetch_day_ahead_prices(token: str, target_date: date) -> DaySeries:
         "periodEnd": period_end.strftime("%Y%m%d%H%M"),
     }
     safe_params = {k: v for k, v in params.items() if k != "securityToken"}
-    logger.debug("ENTSO-E GET %s params=%s", ENTSOE_BASE_URL, safe_params)
+    logger.info(f"ENTSO-E fetch for {target_date}: period_start_local={period_start_local}, period_end_local={period_end_local}")
+    logger.info(f"ENTSO-E GET {ENTSOE_BASE_URL} params={safe_params}")
     async with httpx.AsyncClient(timeout=30) as client:
         r = await client.get(ENTSOE_BASE_URL, params=params)
         if r.status_code == 429:
