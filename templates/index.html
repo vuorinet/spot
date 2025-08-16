@@ -12,10 +12,6 @@
   <body data-app-version="{{ app_version }}" data-default-margin="{{ '%.3f' % (margin_cents or 0.0) }}">
     <header class="app-header">
       <h1>Spot is a dog</h1>
-      <div class="controls">
-        <label class="keep-awake"><input type="checkbox" id="keepAwake" /> Keep display always on</label>
-        <button id="forceRefresh" onclick="refreshCharts()">Force refresh</button>
-      </div>
     </header>
 
     <main class="charts">

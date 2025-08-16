@@ -1,23 +1,129 @@
-html, body { height: 100vh; margin: 0; padding: 0; background-color: #000; color: #ddd; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; overflow: hidden; }
-.app-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-bottom: 1px solid #222; font-size: 14px; flex-shrink: 0; }
-.charts { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 8px; height: calc(100vh - 50px); }
-.chart-head { color: #aaa; margin-bottom: 4px; font-size: 12px; }
-.chart-body { position: relative; height: calc(100vh - 80px); background: #0b0b0b; border: 1px solid #222; border-radius: 4px; }
-.chart-placeholder { position: absolute; inset: 0; display: grid; align-items: end; gap: 2px; padding: 8px; }
-.bar { display: flex; flex-direction: column; justify-content: flex-end; background: transparent; }
+/* Base styles */
+html, body { 
+  height: 100vh; 
+  margin: 0; 
+  padding: 0; 
+  background-color: #000; 
+  color: #ddd; 
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; 
+  overflow: hidden; 
+}
+
+/* Enable scrolling on mobile */
+@media screen and (max-width: 900px) {
+  html, body {
+    overflow: auto; /* Enable scrolling on mobile */
+    height: auto; /* Allow body to expand */
+    min-height: 100vh; /* Minimum full viewport height */
+  }
+}
+
+.app-header { 
+  display: flex; 
+  justify-content: center; 
+  align-items: center; 
+  padding: 8px 12px; 
+  border-bottom: 1px solid #222; 
+  font-size: 14px; 
+  flex-shrink: 0; 
+}
+
+.charts { 
+  position: relative; 
+  display: grid; 
+  grid-template-columns: 1fr 1fr; 
+  gap: 4px; 
+  padding: 4px; 
+  height: calc(100vh - 50px); 
+}
+
+.chart-head { 
+  color: #aaa; 
+  margin-bottom: 2px; 
+  font-size: 12px; 
+}
+
+.chart-body { 
+  position: relative; 
+  height: calc(50vh - 25px); /* Reduced overhead for desktop */
+  background: #0b0b0b; 
+  border: 1px solid #222; 
+  border-radius: 4px; 
+}
+
+.chart-placeholder { 
+  position: absolute; 
+  inset: 0; 
+  display: grid; 
+  align-items: end; 
+  gap: 2px; 
+  padding: 2px; 
+}
+
+.bar { 
+  display: flex; 
+  flex-direction: column; 
+  justify-content: flex-end; 
+  background: transparent; 
+}
+
 .bar .spot { width: 100%; }
 .bar .margin { width: 100%; background: #333333; }
 .date-string { font-size: 12px; color: #666; }
 .now-line { position: absolute; top: 0; bottom: 0; width: 2px; background: #ffcc00; left: 0; }
 .toast { position: fixed; bottom: 16px; right: 16px; background: #111; color: #eee; padding: 8px 12px; border-radius: 6px; border: 1px solid #333; }
 .hidden { display: none; }
-@media (max-width: 900px) { 
-  .charts { grid-template-columns: 1fr; gap: 6px; padding: 6px; }
-  .chart-body { height: calc(50vh - 60px); min-height: 250px; }
+
+/* Mobile and Tablet Responsive Design */
+
+/* Mobile phones (always stacked, regardless of orientation) */
+@media screen and (max-width: 900px) {
+  .charts { 
+    grid-template-columns: 1fr; /* Always stacked on mobile */
+    gap: 4px; 
+    padding: 4px; 
+    height: auto; /* Allow container to expand for scrolling */
+    min-height: calc(100vh - 40px); /* Minimum full viewport height */
+  }
+  .chart-body { 
+    height: 45vh; /* Fixed height for each chart - allows scrolling to see both */
+    min-height: 250px; 
+    max-height: 400px; 
+    border: 1px solid #222; /* Restore border for better visual separation */
+    border-radius: 4px; 
+    padding: 0; 
+    overflow: hidden; 
+  }
+  .app-header { 
+    padding: 4px 8px; 
+    font-size: 12px; 
+  }
+  .chart-head { 
+    font-size: 11px; 
+    margin-bottom: 2px; 
+  }
 }
-@media (max-width: 600px) {
-  .app-header { padding: 6px 8px; font-size: 12px; }
-  .charts { gap: 4px; padding: 4px; height: calc(100vh - 40px); }
-  .chart-head { font-size: 11px; margin-bottom: 2px; }
-  .chart-body { height: calc(50vh - 50px); min-height: 200px; border-radius: 2px; }
+
+/* Tablets and Desktop (side-by-side layout) */
+@media screen and (min-width: 901px) {
+  .charts { 
+    grid-template-columns: 1fr 1fr; /* Side-by-side on tablets and desktop */
+    gap: 4px; 
+    padding: 4px; 
+    height: calc(100vh - 50px); 
+    padding-bottom: 20px; /* Add more bottom padding */
+  }
+  .chart-body { 
+    height: calc(100vh - 120px); /* Leave more space for X-axis labels and bottom padding */
+    min-height: 200px; 
+    overflow: visible; /* Allow X-axis labels to be visible outside container */
+  }
+  .app-header { 
+    padding: 6px 10px; 
+    font-size: 14px; 
+  }
+  .chart-head { 
+    font-size: 12px; 
+    margin-bottom: 2px; 
+  }
 }

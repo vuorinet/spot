@@ -5,25 +5,27 @@
   const countdownEl = d.getElementById('countdown');
 
 
-  // Keep-awake via Screen Wake Lock API
-  const keepAwake = d.getElementById('keepAwake');
+  // Keep-awake via URL query parameter
   let wakeLock = null;
   async function requestWakeLock() {
     try {
       wakeLock = await navigator.wakeLock.request('screen');
-      wakeLock.addEventListener('release', () => {});
+      wakeLock.addEventListener('release', () => {
+        console.log('Wake lock released');
+      });
+      console.log('Wake lock activated');
     } catch (e) {
       console.warn('Wake Lock not available', e);
     }
   }
-  keepAwake?.addEventListener('change', (e) => {
-    if (e.target.checked) {
-      requestWakeLock();
-    } else {
-      wakeLock?.release?.();
-      wakeLock = null;
-    }
-  });
+  
+  // Check URL parameter for keep-awake
+  const urlParams = new URLSearchParams(window.location.search);
+  const keepAwakeParam = urlParams.get('keepAwake') || urlParams.get('keep-awake');
+  if (keepAwakeParam === 'true' || keepAwakeParam === '1') {
+    console.log('Keep-awake enabled via URL parameter');
+    requestWakeLock();
+  }
 
   // Version auto-reload SSE fallback to polling
   const currentVersion = d.body.getAttribute('data-app-version');
@@ -170,6 +172,22 @@
       window.checkDateChange();
     }
   }, 5 * 60 * 1000); // 5 minutes
+
+  // Handle orientation changes and window resize for responsive charts
+  let resizeTimeout;
+  function handleResize() {
+    clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(() => {
+      console.log('Window resized or orientation changed - refreshing charts');
+      window.refreshCharts();
+    }, 300); // Debounce resize events
+  }
+
+  window.addEventListener('resize', handleResize);
+  window.addEventListener('orientationchange', () => {
+    // Small delay to ensure orientation change is complete
+    setTimeout(handleResize, 100);
+  });
 
   // Global function to refresh charts
   window.refreshCharts = function() {
