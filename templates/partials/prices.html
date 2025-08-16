@@ -92,15 +92,16 @@ window.createChart_{{ chart_date }} = function() {
           vAxis: {
             title: 'Price (cnt/kWh)',
             minValue: data.minPrice,
-            maxValue: data.maxPrice,
+            maxValue: Math.max(15, data.maxPrice),  // Ensure minimum of 15 cents
             viewWindow: {
               min: data.minPrice,
-              max: data.maxPrice
+              max: Math.max(15, data.maxPrice)      // Ensure minimum of 15 cents
             },
             ticks: (() => {
               const ticks = [];
+              const maxValue = Math.max(15, data.maxPrice);  // Use the same enforced maximum
               // Add all ticks (1-cent intervals) with custom formatting
-              for (let i = data.minPrice; i <= data.maxPrice; i += 1) {
+              for (let i = data.minPrice; i <= maxValue; i += 1) {
                 if (i % 5 === 0) {
                   // Major tick - show label
                   ticks.push({v: i, f: i.toString()});
@@ -160,7 +161,8 @@ window.createChart_{{ chart_date }} = function() {
         // Add ready event listener to draw yellow "now" line for today and enhance gridlines
         google.visualization.events.addListener(chart, 'ready', function() {
           // Draw enhanced major gridlines (every 5 cents)
-          drawMajorGridlines(chart, chartElement, data.minPrice, data.maxPrice);
+          const maxValue = Math.max(15, data.maxPrice);  // Use the same enforced maximum
+          drawMajorGridlines(chart, chartElement, data.minPrice, maxValue);
           
           if (date === 'today') {
             addNowLine(chart, chartElement, validData);

@@ -266,6 +266,10 @@ def create_app() -> FastAPI:
                 # Calculate the total price (spot + margin) that will be displayed
                 total_price = spot_cents_with_vat + margin_cents
                 
+                # Debug logging for scaling investigation
+                if intervals_processed < 5 or total_price > global_max:  # Log first few and any new maximums
+                    logger.debug(f"Price interval {intervals_processed}: spot={spot_cents_with_vat:.2f}, total={total_price:.2f} (margin={margin_cents:.2f})")
+                
                 # Track the actual range of total prices
                 global_max = max(global_max, total_price)
                 global_min = min(global_min, spot_cents_with_vat)  # Spot price can be negative, margin is always added on top
@@ -280,16 +284,19 @@ def create_app() -> FastAPI:
             global_min = 0.0
             global_max = 25.0
         
-        # Round to 5-cent increments as requested
-        # Maximum: round UP to next 5 cents above highest price
+        # Round to 5-cent increments with minimum of 15 cents
+        # Maximum: always at least 15 cents, or round UP to next 5 cents above highest price
         if global_max <= 0:
-            max_price_rounded = 5  # Minimum scale of 5 cents for visibility
+            max_price_rounded = 15  # Minimum scale of 15 cents
         else:
-            # If already a multiple of 5, add 5 more; otherwise round up to next 5
+            # Calculate rounded price based on actual max
             if global_max % 5 == 0:
-                max_price_rounded = int(global_max) + 5
+                calculated_max = int(global_max) + 5
             else:
-                max_price_rounded = ((int(global_max) // 5) + 1) * 5
+                calculated_max = ((int(global_max) // 5) + 1) * 5
+            
+            # Ensure minimum of 15 cents
+            max_price_rounded = max(15, calculated_max)
         
         # Minimum: round DOWN to next 5 cents below lowest price, or 0 for positive prices
         if global_min >= 0:
