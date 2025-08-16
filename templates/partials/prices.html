@@ -97,6 +97,28 @@ window.createChart_{{ chart_date }} = function() {
               min: data.minPrice,
               max: data.maxPrice
             },
+            ticks: (() => {
+              const ticks = [];
+              // Add all ticks (1-cent intervals) with custom formatting
+              for (let i = data.minPrice; i <= data.maxPrice; i += 1) {
+                if (i % 5 === 0) {
+                  // Major tick - show label
+                  ticks.push({v: i, f: i.toString()});
+                } else {
+                  // Minor tick - no label (empty string)
+                  ticks.push({v: i, f: ''});
+                }
+              }
+              return ticks;
+            })(),
+            gridlines: {
+              color: '#444444',  // Darker for minor lines
+              count: -1  // Use all our custom ticks
+            },
+            // Add major gridlines on top
+            minorGridlines: {
+              count: 0  // Disable automatic minor gridlines
+            },
             textStyle: {
               fontSize: 12,
               color: 'white'
@@ -135,8 +157,11 @@ window.createChart_{{ chart_date }} = function() {
         
         const chart = new google.visualization.ColumnChart(chartElement);
         
-        // Add ready event listener to draw yellow "now" line for today
+        // Add ready event listener to draw yellow "now" line for today and enhance gridlines
         google.visualization.events.addListener(chart, 'ready', function() {
+          // Draw enhanced major gridlines (every 5 cents)
+          drawMajorGridlines(chart, chartElement, data.minPrice, data.maxPrice);
+          
           if (date === 'today') {
             addNowLine(chart, chartElement, validData);
             // Set up timer to update the now line every minute
@@ -184,6 +209,42 @@ window.createChart_{{ chart_date }} = function() {
   function addNowLine(chart, chartElement, validData) {
     // Initial draw - just call the internal function
     addNowLineInternal(chart, chartElement, validData);
+  }
+
+  function drawMajorGridlines(chart, chartElement, minPrice, maxPrice) {
+    try {
+      const svgElement = chartElement.querySelector('svg');
+      if (!svgElement) return;
+      
+      const chartLayout = chart.getChartLayoutInterface();
+      const chartArea = chartLayout.getChartAreaBoundingBox();
+      if (!chartArea) return;
+      
+      // Draw brighter lines at 5-cent intervals
+      for (let price = minPrice; price <= maxPrice; price += 5) {
+        try {
+          const yPosition = chartLayout.getYLocation(price);
+          
+          // Create horizontal line for major gridline
+          const majorLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          majorLine.setAttribute('class', 'major-gridline');
+          majorLine.setAttribute('x1', chartArea.left.toString());
+          majorLine.setAttribute('y1', yPosition.toString());
+          majorLine.setAttribute('x2', (chartArea.left + chartArea.width).toString());
+          majorLine.setAttribute('y2', yPosition.toString());
+          majorLine.setAttribute('stroke', '#999999');  // Even brighter than before
+          majorLine.setAttribute('stroke-width', '1');
+          majorLine.setAttribute('opacity', '0.9');
+          
+          svgElement.appendChild(majorLine);
+        } catch (e) {
+          // Skip if getYLocation fails for this price
+          console.warn('Could not draw major gridline for price:', price);
+        }
+      }
+    } catch (error) {
+      console.error('Error drawing major gridlines:', error);
+    }
   }
 
   function addNowLineInternal(chart, chartElement, validData) {
