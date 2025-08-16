@@ -80,11 +80,11 @@ window.createChart_{{ chart_date }} = function() {
           return ticks;
         })(),
         gridlines: {
-          count: 0, // Disable automatic gridlines (we'll use custom major gridlines)
-          color: '#444444'
+          count: 0, // Disable automatic gridlines completely - use only custom ones
+          color: 'transparent'
         },
         minorGridlines: {
-          count: 0 // Disable minor gridlines
+          count: 0 // Disable minor gridlines between major ones
         },
         textStyle: {
           fontSize: isMobile ? 12 : 12, // Increase mobile font size for better visibility
@@ -248,8 +248,8 @@ window.createChart_{{ chart_date }} = function() {
               return ticks;
             })(),
             gridlines: {
-              count: 0, // Disable automatic gridlines (we'll use custom major gridlines)
-              color: '#444444'
+              count: 0, // Disable automatic gridlines completely - use only custom ones
+              color: 'transparent'
             },
             minorGridlines: {
               count: 0 // Disable minor gridlines
@@ -361,22 +361,37 @@ window.createChart_{{ chart_date }} = function() {
 
   function drawMajorGridlines(chart, chartElement, minPrice, maxPrice) {
     try {
+      console.log('drawMajorGridlines called with:', minPrice, 'to', maxPrice);
+      
       // Remove any existing custom gridlines to prevent duplicates
       const existingLines = chartElement.querySelectorAll('.major-gridline, .minor-gridline, .custom-gridlines-group');
       existingLines.forEach(line => line.remove());
       
       const svgElement = chartElement.querySelector('svg');
-      if (!svgElement) return;
+      if (!svgElement) {
+        console.error('No SVG element found in chart');
+        return;
+      }
       
       const chartLayout = chart.getChartLayoutInterface();
       const chartArea = chartLayout.getChartAreaBoundingBox();
-      if (!chartArea) return;
+      if (!chartArea) {
+        console.error('No chart area bounding box found');
+        return;
+      }
+      
+
       
       // Create a group element for all gridlines to ensure proper z-order
       const gridlinesGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
       gridlinesGroup.setAttribute('class', 'custom-gridlines-group');
       
       // Draw all gridlines (1-cent intervals)
+      let majorCount = 0;
+      let minorCount = 0;
+      
+
+      
       for (let price = minPrice; price <= maxPrice; price += 1) {
         try {
           const yPosition = chartLayout.getYLocation(price);
@@ -389,30 +404,70 @@ window.createChart_{{ chart_date }} = function() {
           gridLine.setAttribute('y1', yPosition.toString());
           gridLine.setAttribute('x2', (chartArea.left + chartArea.width).toString());
           gridLine.setAttribute('y2', yPosition.toString());
-          gridLine.setAttribute('stroke', isMajor ? '#999999' : '#444444');  // Brighter for major, darker for minor
-          gridLine.setAttribute('stroke-width', '1');
-          gridLine.setAttribute('opacity', isMajor ? '0.9' : '0.6');
+          
+          if (isMajor) {
+            // Major gridlines - thick and bright to avoid anti-aliasing
+            gridLine.setAttribute('stroke', '#aaaaaa');  // Bright gray for good visibility
+            gridLine.setAttribute('stroke-width', '2');  // Thick enough to avoid anti-aliasing
+            gridLine.setAttribute('opacity', '1.0');  // Full opacity
+            gridLine.setAttribute('style', 'stroke: #aaaaaa !important; stroke-width: 2px !important; opacity: 1.0 !important;');
+            gridLine.setAttribute('data-price', price.toString());  // Add data attribute for debugging
+
+          } else {
+            // Minor gridlines - thick enough to be consistent
+            gridLine.setAttribute('stroke', '#666666');  // Medium gray
+            gridLine.setAttribute('stroke-width', '1.5');  // Thick enough to avoid anti-aliasing
+            gridLine.setAttribute('opacity', '0.7');  // Good opacity
+            gridLine.setAttribute('style', 'stroke: #666666 !important; stroke-width: 1.5px !important; opacity: 0.7 !important;');
+
+          }
           
           // Add gridline to the group
           gridlinesGroup.appendChild(gridLine);
+          
+          if (isMajor) majorCount++;
+          else minorCount++;
         } catch (e) {
           // Skip if getYLocation fails for this price
-          console.warn('Could not draw gridline for price:', price);
+          console.warn('Could not draw gridline for price:', price, e);
         }
       }
       
-      // Insert the entire gridlines group at the beginning (behind chart elements)
-      // Find the first child that's not a <defs> element
-      let insertPoint = svgElement.firstChild;
-      while (insertPoint && insertPoint.tagName === 'defs') {
-        insertPoint = insertPoint.nextSibling;
+
+      
+      // Insert gridlines before data bars but after background
+      // Find the first data element (usually a 'g' group containing bars)
+      const dataGroups = svgElement.querySelectorAll('g');
+      let dataGroup = null;
+      
+      // Look for a group that contains rect elements (the chart bars)
+      for (let group of dataGroups) {
+        if (group.querySelector('rect')) {
+          dataGroup = group;
+          break;
+        }
       }
       
-      if (insertPoint) {
-        svgElement.insertBefore(gridlinesGroup, insertPoint);
+      if (dataGroup) {
+        svgElement.insertBefore(gridlinesGroup, dataGroup);
+
       } else {
-        svgElement.appendChild(gridlinesGroup);
+        // Fallback: insert at the beginning but after defs
+        let insertPoint = svgElement.firstChild;
+        while (insertPoint && (insertPoint.tagName === 'defs' || insertPoint.tagName === 'rect')) {
+          insertPoint = insertPoint.nextSibling;
+        }
+        
+        if (insertPoint) {
+          svgElement.insertBefore(gridlinesGroup, insertPoint);
+
+        } else {
+          svgElement.appendChild(gridlinesGroup);
+
+        }
       }
+      
+
     } catch (error) {
       console.error('Error drawing gridlines:', error);
     }
