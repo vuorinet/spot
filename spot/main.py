@@ -332,18 +332,19 @@ def create_app() -> FastAPI:
             # Ensure minimum of 15 cents
             max_price_rounded = max(15, calculated_max)
         
-        # Minimum: round DOWN to next 5 cents below lowest price, or 0 for positive prices
+        # Minimum: round DOWN to next 1 cent below lowest price, or 0 for positive prices
         if global_min >= 0:
             min_price_rounded = 0  # Start from 0 for positive prices
         else:
-            # For negative prices, round down to next 5-cent boundary
+            # For negative prices, round down to next 1-cent boundary
             import math
-            if global_min % 5 == 0:
-                min_price_rounded = int(global_min) - 5
+            if global_min % 1 == 0:
+                min_price_rounded = int(global_min) - 1
             else:
-                min_price_rounded = math.floor(global_min / 5) * 5
+                min_price_rounded = math.floor(global_min)
         
         logger.info(f"Global price range: {global_min:.2f} -> {global_max:.2f}, rounded: {min_price_rounded} -> {max_price_rounded} (margin: {margin_cents:.3f})")
+        logger.info(f"Y-axis range calculation: min={global_min:.2f} -> {min_price_rounded}, max={global_max:.2f} -> {max_price_rounded}")
         logger.debug(f"Scaling calculation details: datasets={datasets_checked}, intervals={intervals_processed}")
         
         return min_price_rounded, max_price_rounded
