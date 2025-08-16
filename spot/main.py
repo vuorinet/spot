@@ -194,15 +194,32 @@ def create_app() -> FastAPI:
         else:
             logger.info("Cache hit: Using cached today's prices (%d intervals)", len(cache.today.intervals))
             
+        # Check if we need to fetch tomorrow's data (either missing or incomplete)
+        need_tomorrow = False
+        tomorrow_d = today_d + timedelta(days=1)
+        
         if cache.tomorrow is None:
-            logger.debug("Cache miss: Attempting to prefetch tomorrow's prices for %s", today_d + timedelta(days=1))
+            need_tomorrow = True
+            logger.debug("Cache miss: No tomorrow data cached")
+        else:
+            # Check if tomorrow data is complete (all 24 hours)
+            tomorrow_intervals = [
+                it for it in cache.tomorrow.intervals 
+                if it.start_utc.astimezone(HELSINKI_TZ).date() == tomorrow_d
+            ]
+            if len(tomorrow_intervals) < 24:
+                need_tomorrow = True
+                logger.info("Incomplete tomorrow data: only %d/24 intervals cached, refetching", len(tomorrow_intervals))
+        
+        if need_tomorrow:
+            logger.debug("Attempting to fetch tomorrow's prices for %s", tomorrow_d)
             try:
-                cache.tomorrow = await fetch_prices_for_day(today_d + timedelta(days=1))
+                cache.tomorrow = await fetch_prices_for_day(tomorrow_d)
                 logger.info("Successfully cached tomorrow's prices (%d intervals)", len(cache.tomorrow.intervals))
-                await notify_cache_event("tomorrow_updated", {"date": (today_d + timedelta(days=1)).isoformat()})
+                await notify_cache_event("tomorrow_updated", {"date": tomorrow_d.isoformat()})
             except DataNotAvailable:
                 logger.debug("Tomorrow's prices not available yet")
-                cache.tomorrow = None
+                # Don't clear existing partial data - keep what we have
         else:
             logger.info("Cache hit: Using cached tomorrow's prices (%d intervals)", len(cache.tomorrow.intervals))
             
@@ -521,10 +538,15 @@ def create_app() -> FastAPI:
                     for it in cache.today.intervals
                 ) if cache.today else False
                 
-                has_tomorrow = cache.tomorrow is not None and any(
-                    it.start_utc.astimezone(HELSINKI_TZ).date() == tomorrow_d 
-                    for it in cache.tomorrow.intervals  
-                ) if cache.tomorrow else False
+                # Check if we have complete tomorrow data (all 24 hours)
+                has_tomorrow = False
+                if cache.tomorrow is not None:
+                    tomorrow_intervals = [
+                        it for it in cache.tomorrow.intervals 
+                        if it.start_utc.astimezone(HELSINKI_TZ).date() == tomorrow_d
+                    ]
+                    # Consider tomorrow data complete only if we have all 24 hours
+                    has_tomorrow = len(tomorrow_intervals) >= 24
                 
                 # Determine urgency based on missing critical data
                 missing_today = not has_today
