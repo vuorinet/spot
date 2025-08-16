@@ -213,13 +213,13 @@ window.createChart_{{ chart_date }} = function() {
             
             // Add each price component if it has a value (including negative values)
             if (lowPrice !== 0 && lowPrice !== null && lowPrice !== undefined) {
-              tooltipContent += `<div style="color: #666;">Low price: <strong>${lowPrice.toFixed(2)} c/kWh</strong></div>`;
+              tooltipContent += `<div style="color: #666;">Price: <strong>${lowPrice.toFixed(2)} c/kWh</strong></div>`;
             }
             if (mediumPrice !== 0 && mediumPrice !== null && mediumPrice !== undefined) {
-              tooltipContent += `<div style="color: #666;">Medium price: <strong>${mediumPrice.toFixed(2)} c/kWh</strong></div>`;
+              tooltipContent += `<div style="color: #666;">Price: <strong>${mediumPrice.toFixed(2)} c/kWh</strong></div>`;
             }
             if (highPrice !== 0 && highPrice !== null && highPrice !== undefined) {
-              tooltipContent += `<div style="color: #666;">High price: <strong>${highPrice.toFixed(2)} c/kWh</strong></div>`;
+              tooltipContent += `<div style="color: #666;">Price: <strong>${highPrice.toFixed(2)} c/kWh</strong></div>`;
             }
             
             // Always show margin
