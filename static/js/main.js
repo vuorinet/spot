@@ -103,10 +103,29 @@
     }
   };
 
+  // Track the current date to detect midnight transitions
+  let lastKnownDate = new Date().toDateString();
+
+  // Function to check if date has changed and refresh if needed
+  window.checkDateChange = function() {
+    const currentDate = new Date().toDateString();
+    if (currentDate !== lastKnownDate) {
+      console.log('Date changed detected:', lastKnownDate, '->', currentDate);
+      lastKnownDate = currentDate;
+      // Date has changed - refresh charts to get new data
+      window.refreshCharts();
+      return true;
+    }
+    return false;
+  };
+
   // Listen for window focus and visibility changes
   window.addEventListener('focus', () => {
-    console.log('Window focused - updating yellow line');
-    window.updateNowLineImmediately();
+    console.log('Window focused - checking for date change and updating yellow line');
+    if (!window.checkDateChange()) {
+      // Only update yellow line if date didn't change (charts would be refreshed anyway)
+      window.updateNowLineImmediately();
+    }
   });
 
   // Note: We don't hide on blur because the window might still be visible
@@ -114,8 +133,11 @@
 
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) {
-      console.log('Document became visible - updating yellow line');
-      window.updateNowLineImmediately();
+      console.log('Document became visible - checking for date change and updating yellow line');
+      if (!window.checkDateChange()) {
+        // Only update yellow line if date didn't change (charts would be refreshed anyway)
+        window.updateNowLineImmediately();
+      }
     } else {
       console.log('Document became hidden - hiding yellow line');
       window.hideNowLine();
@@ -131,14 +153,23 @@
       if (document.hidden) {
         wasHidden = true;
       } else if (wasHidden) {
-        console.log('Screen likely re-enabled - updating yellow line');
+        console.log('Screen likely re-enabled - checking for date change and updating yellow line');
         setTimeout(() => {
-          window.updateNowLineImmediately();
+          if (!window.checkDateChange()) {
+            window.updateNowLineImmediately();
+          }
         }, 100); // Small delay to ensure everything is ready
         wasHidden = false;
       }
     });
   }
+
+  // Periodic date check as backup (every 5 minutes when page is visible)
+  setInterval(() => {
+    if (!document.hidden) {
+      window.checkDateChange();
+    }
+  }, 5 * 60 * 1000); // 5 minutes
 
   // Global function to refresh charts
   window.refreshCharts = function() {
