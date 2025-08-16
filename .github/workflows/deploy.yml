@@ -92,7 +92,7 @@ jobs:
         run: |
           cat > /srv/spot/.env << 'EOF'
           ENTSOE_API_TOKEN=${{ secrets.ENTSOE_API_TOKEN }}
-          DEFAULT_MARGIN_CENTS_PER_KWH=0
+          DEFAULT_MARGIN_CENTS_PER_KWH=0.60
           SPOT_VERSION=${{ github.sha }}
           EOF
 
