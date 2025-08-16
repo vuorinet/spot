@@ -114,6 +114,7 @@ window.createChart_{{ chart_date }} = function() {
         3: { color: '#333333' }  // Dark grey for margin
       },
       tooltip: {
+        isHtml: true,
         textStyle: { 
           fontSize: isMobile ? 12 : 14,
           color: 'black'
@@ -176,18 +177,79 @@ window.createChart_{{ chart_date }} = function() {
         const chartData = new google.visualization.DataTable();
         chartData.addColumn('string', 'Time');
         chartData.addColumn('number', 'Low Price');
-        chartData.addColumn('number', 'Medium Price'); 
+        chartData.addColumn({type: 'string', role: 'tooltip', p: {html: true}}); // Tooltip for Low Price
+        chartData.addColumn('number', 'Medium Price');
+        chartData.addColumn({type: 'string', role: 'tooltip', p: {html: true}}); // Tooltip for Medium Price
         chartData.addColumn('number', 'High Price');
+        chartData.addColumn({type: 'string', role: 'tooltip', p: {html: true}}); // Tooltip for High Price
         chartData.addColumn('number', 'Margin');
+        chartData.addColumn({type: 'string', role: 'tooltip', p: {html: true}}); // Tooltip for Margin
         
-        // Validate data before adding rows
+        // Validate data before adding rows and add custom tooltips
         const validData = data.data.filter(row => Array.isArray(row) && row.length === 5);
         if (validData.length === 0) {
           chartElement.innerHTML = '<div style="color: white; padding: 20px; text-align: center;">Invalid data format received</div>';
           return;
         }
         
-        chartData.addRows(validData);
+        // Process data to add custom tooltips for each series
+        const processedData = validData.map(row => {
+          const [hourStr, lowPrice, mediumPrice, highPrice, marginPrice] = row;
+          
+          // Calculate total spot price (sum of low + medium + high)
+          const spotPrice = (lowPrice || 0) + (mediumPrice || 0) + (highPrice || 0);
+          const totalPrice = spotPrice + (marginPrice || 0);
+          
+          // Format time as HH:MM
+          const hour = parseInt(hourStr);
+          const timeFormatted = `${hour.toString().padStart(2, '0')}:00`;
+          
+          // Create a comprehensive tooltip that shows all components
+          const createTooltip = () => {
+            let tooltipContent = `
+              <div style="padding: 8px; font-family: Arial, sans-serif; font-size: 13px; line-height: 1.4;">
+                <div style="font-weight: bold; margin-bottom: 4px; color: #333;">${timeFormatted}</div>
+            `;
+            
+            // Add each price component if it has a value
+            if (lowPrice && lowPrice > 0) {
+              tooltipContent += `<div style="color: #666;">Low price: <strong>${lowPrice.toFixed(2)} c/kWh</strong></div>`;
+            }
+            if (mediumPrice && mediumPrice > 0) {
+              tooltipContent += `<div style="color: #666;">Medium price: <strong>${mediumPrice.toFixed(2)} c/kWh</strong></div>`;
+            }
+            if (highPrice && highPrice > 0) {
+              tooltipContent += `<div style="color: #666;">High price: <strong>${highPrice.toFixed(2)} c/kWh</strong></div>`;
+            }
+            
+            // Always show margin
+            tooltipContent += `<div style="color: #666;">Margin: <strong>${(marginPrice || 0).toFixed(2)} c/kWh</strong></div>`;
+            
+            // Add total with separator
+            tooltipContent += `
+                <div style="border-top: 1px solid #ddd; margin-top: 4px; padding-top: 4px; color: #333;">
+                  <strong>Total: ${totalPrice.toFixed(2)} c/kWh</strong>
+                </div>
+              </div>
+            `;
+            
+            return tooltipContent.trim();
+          };
+          
+          const tooltip = createTooltip();
+          
+          // Return row with tooltip for each series: 
+          // [Time, LowPrice, LowTooltip, MediumPrice, MediumTooltip, HighPrice, HighTooltip, Margin, MarginTooltip]
+          return [
+            hourStr,
+            lowPrice, tooltip,      // Low price + tooltip
+            mediumPrice, tooltip,   // Medium price + tooltip  
+            highPrice, tooltip,     // High price + tooltip
+            marginPrice, tooltip    // Margin + tooltip
+          ];
+        });
+        
+        chartData.addRows(processedData);
         
         // Responsive chart options based on viewport width
         const isMobile = window.innerWidth <= 900;
@@ -286,6 +348,7 @@ window.createChart_{{ chart_date }} = function() {
             groupWidth: '70%'
           },
           tooltip: {
+            isHtml: true,
             textStyle: { 
               fontSize: isMobile ? 12 : 14,
               color: 'black'
