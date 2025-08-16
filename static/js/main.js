@@ -178,8 +178,9 @@
   function handleResize() {
     clearTimeout(resizeTimeout);
     resizeTimeout = setTimeout(() => {
-      console.log('Window resized or orientation changed - refreshing charts');
-      window.refreshCharts();
+      console.log('Window resized or orientation changed - redrawing existing charts');
+      // Just redraw existing charts without reloading data
+      window.redrawCharts();
     }, 300); // Debounce resize events
   }
 
@@ -189,8 +190,38 @@
     setTimeout(handleResize, 100);
   });
 
-  // Global function to refresh charts
+  // Add HTMX event listeners for debugging chart swaps
+  d.body.addEventListener('htmx:afterSwap', function(evt) {
+    console.log('HTMX afterSwap:', evt.detail.target.id || evt.detail.target.className);
+  });
+
+  d.body.addEventListener('htmx:swapError', function(evt) {
+    console.error('HTMX swap error:', evt.detail);
+  });
+
+  // Function to redraw existing charts (for responsive resize)
+  window.redrawCharts = function() {
+    console.log('Redrawing existing charts for responsive layout...');
+    
+    // Find existing chart instances and redraw them
+    const todayChartElement = d.querySelector('#todayChart [id*="googleChart"]');
+    const tomorrowChartElement = d.querySelector('#tomorrowChart [id*="googleChart"]');
+    
+    if (todayChartElement && window.createChart_today) {
+      console.log('Redrawing today chart');
+      window.createChart_today();
+    }
+    
+    if (tomorrowChartElement && window.createChart_tomorrow) {
+      console.log('Redrawing tomorrow chart');
+      window.createChart_tomorrow();
+    }
+  };
+
+  // Global function to refresh charts (fetch new data from server)
   window.refreshCharts = function() {
+    console.log('Refreshing charts with new data from server...');
+    
     // Clean up any existing now line timers before refresh
     const todayChartElement = d.querySelector('#todayChart [id*="googleChart"]');
     const tomorrowChartElement = d.querySelector('#tomorrowChart [id*="googleChart"]');
@@ -204,9 +235,34 @@
       delete tomorrowChartElement._nowLineTimer;
     }
     
+    // Verify target elements exist before refreshing
+    const todayTarget = d.querySelector('#todayChart');
+    const tomorrowTarget = d.querySelector('#tomorrowChart');
+    
+    if (!todayTarget) {
+      console.error('Today chart target element not found');
+      return;
+    }
+    if (!tomorrowTarget) {
+      console.error('Tomorrow chart target element not found');
+      return;
+    }
+    
     // Trigger HTMX refresh for both charts
     const margin = d.body.getAttribute('data-default-margin') || '0';
-    htmx.ajax('GET', `/partials/prices?date=today&margin=${margin}`, {target: '#todayChart', swap: 'outerHTML'});
-    htmx.ajax('GET', `/partials/prices?date=tomorrow&margin=${margin}`, {target: '#tomorrowChart', swap: 'outerHTML'});
+    
+    try {
+      htmx.ajax('GET', `/partials/prices?date=today&margin=${margin}`, {
+        target: '#todayChart', 
+        swap: 'outerHTML'
+      });
+      htmx.ajax('GET', `/partials/prices?date=tomorrow&margin=${margin}`, {
+        target: '#tomorrowChart', 
+        swap: 'outerHTML'
+      });
+      console.log('Chart refresh requests sent');
+    } catch (error) {
+      console.error('Error refreshing charts:', error);
+    }
   };
 })();

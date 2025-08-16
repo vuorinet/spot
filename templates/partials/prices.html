@@ -3,7 +3,7 @@
 {% set chart_date = request.query_params.get('date', 'today') %}
 {% set chart_id = 'googleChart_' ~ chart_date %}
 {% set date_string_id = 'dateString_' ~ chart_date %}
-<section class="chart" aria-label="Prices chart" data-date="{{ chart_date }}" data-margin="{{ request.query_params.get('margin', '0') }}">
+<section id="{{ chart_date }}Chart" class="chart" aria-label="Prices chart" data-date="{{ chart_date }}" data-margin="{{ request.query_params.get('margin', '0') }}">
   <div class="chart-head">
     {{ chart_date|title }}
     <span class="date-string" id="{{ date_string_id }}"></span>
@@ -23,6 +23,117 @@ window.createChart_{{ chart_date }} = function() {
   
   if (!chartElement) {
     console.error('Chart element not found:', '{{ chart_id }}');
+    return;
+  }
+  
+  // Check if we already have cached data and chart instance for this element
+  if (chartElement._chartInstance && chartElement._chartData && chartElement._originalPriceRange) {
+    console.log('Redrawing existing chart for {{ chart_date }} without fetching new data');
+    
+    // Recalculate responsive options since viewport may have changed
+    const isMobile = window.innerWidth <= 900;
+    const options = {
+      title: '',
+      hAxis: {
+        title: '',
+        textStyle: {
+          fontSize: isMobile ? 10 : 12,
+          color: 'white'
+        },
+        titleTextStyle: {
+          color: 'white',
+          fontSize: isMobile ? 10 : 12
+        },
+        slantedText: false,
+        showTextEvery: 1,
+        format: 'none',
+        gridlines: { count: -1 },
+        ticks: (() => {
+          const hourTicks = [];
+          for (let hour = 0; hour < 24; hour++) {
+            hourTicks.push({v: hour.toString(), f: hour.toString()});
+          }
+          return hourTicks;
+        })(),
+        minTextSpacing: 0,
+        maxTextLines: 1,
+        allowContainerBoundaryTextCutoff: false
+      },
+      vAxis: {
+        title: '',
+        minValue: chartElement._originalPriceRange.minPrice,
+        maxValue: chartElement._originalPriceRange.maxPrice,
+        viewWindow: {
+          min: chartElement._originalPriceRange.minPrice,
+          max: chartElement._originalPriceRange.maxPrice
+        },
+        ticks: (() => {
+          const ticks = [];
+          const maxValue = chartElement._originalPriceRange.maxPrice;
+          for (let i = chartElement._originalPriceRange.minPrice; i <= maxValue; i += 1) {
+            if (i % 5 === 0) {
+              ticks.push({v: i, f: i.toString()});
+            } else {
+              ticks.push({v: i, f: ''});
+            }
+          }
+          return ticks;
+        })(),
+        gridlines: {
+          count: 0, // Disable automatic gridlines (we'll use custom major gridlines)
+          color: '#444444'
+        },
+        minorGridlines: {
+          count: 0 // Disable minor gridlines
+        },
+        textStyle: {
+          fontSize: isMobile ? 12 : 12, // Increase mobile font size for better visibility
+          color: 'white'
+        },
+        titleTextStyle: {
+          color: 'white',
+          fontSize: isMobile ? 12 : 12
+        }
+      },
+      isStacked: true,
+      backgroundColor: 'black',
+      width: '100%',
+      height: '100%',
+      chartArea: { 
+        width: isMobile ? '75%' : '90%', // Reduce width to make room for Y-axis labels
+        height: isMobile ? '85%' : '70%',
+        top: isMobile ? 5 : 15,
+        left: isMobile ? 35 : 50, // Increase left margin for Y-axis labels on mobile
+        right: isMobile ? 10 : 5,
+        bottom: isMobile ? 15 : 40
+      },
+      series: {
+        0: { color: '#4CAF50' }, // Green
+        1: { color: '#FF9800' }, // Orange  
+        2: { color: '#F44336' }, // Red
+        3: { color: '#333333' }  // Dark grey for margin
+      },
+      tooltip: {
+        textStyle: { 
+          fontSize: isMobile ? 12 : 14,
+          color: 'black'
+        }
+      }
+    };
+    
+    chartElement._chartInstance.draw(chartElement._chartData, options);
+    
+    // Re-add major gridlines and now line after redraw
+    setTimeout(() => {
+      // Draw major gridlines (every 5 cents)
+      drawMajorGridlines(chartElement._chartInstance, chartElement, chartElement._originalPriceRange.minPrice, chartElement._originalPriceRange.maxPrice);
+      
+      // Add now line for today's chart
+      if (date === 'today' && chartElement._validData) {
+        addNowLine(chartElement._chartInstance, chartElement, chartElement._validData);
+      }
+    }, 100);
+    
     return;
   }
   
@@ -137,20 +248,19 @@ window.createChart_{{ chart_date }} = function() {
               return ticks;
             })(),
             gridlines: {
-              color: '#444444',  // Darker for minor lines
-              count: -1  // Use all our custom ticks
+              count: 0, // Disable automatic gridlines (we'll use custom major gridlines)
+              color: '#444444'
             },
-            // Add major gridlines on top
             minorGridlines: {
-              count: 0  // Disable automatic minor gridlines
+              count: 0 // Disable minor gridlines
             },
             textStyle: {
-              fontSize: isMobile ? 10 : 12,
+              fontSize: isMobile ? 12 : 12, // Increase mobile font size for better visibility
               color: 'white'
             },
             titleTextStyle: {
               color: 'white',
-              fontSize: isMobile ? 10 : 12
+              fontSize: isMobile ? 12 : 12
             }
           },
           isStacked: true,
@@ -158,10 +268,10 @@ window.createChart_{{ chart_date }} = function() {
           width: '100%',
           height: '100%',
           chartArea: { 
-            width: isMobile ? '85%' : '90%',
+            width: isMobile ? '75%' : '90%', // Reduce width to make room for Y-axis labels
             height: isMobile ? '85%' : '70%',  // Even more reduced height for X-axis labels
             top: isMobile ? 5 : 15,
-            left: isMobile ? 10 : 50,
+            left: isMobile ? 35 : 50, // Increase left margin for Y-axis labels on mobile
             right: isMobile ? 10 : 5,
             bottom: isMobile ? 15 : 40  // Even more space for X-axis labels on larger screens
           },
@@ -186,11 +296,19 @@ window.createChart_{{ chart_date }} = function() {
         try {
           const chart = new google.visualization.ColumnChart(chartElement);
           
-          // Add ready event listener to draw yellow "now" line for today and enhance gridlines
+          // Cache chart instance, data, and price range for future redraws
+          chartElement._chartInstance = chart;
+          chartElement._chartData = chartData;
+          chartElement._validData = validData; // Store for now line redrawing
+          chartElement._originalPriceRange = {
+            minPrice: data.minPrice,
+            maxPrice: data.maxPrice
+          };
+          
+          // Add ready event listener to draw major gridlines and today's "now" line
           google.visualization.events.addListener(chart, 'ready', function() {
-            // Draw enhanced major gridlines (every 5 cents)
-            const maxValue = Math.max(15, data.maxPrice);  // Use the same enforced maximum
-            drawMajorGridlines(chart, chartElement, data.minPrice, maxValue);
+            // Draw major gridlines (every 5 cents) - brighter than minor ones
+            drawMajorGridlines(chart, chartElement, data.minPrice, data.maxPrice);
             
             if (date === 'today') {
               addNowLine(chart, chartElement, validData);
@@ -200,6 +318,7 @@ window.createChart_{{ chart_date }} = function() {
           });
           
           chart.draw(chartData, options);
+          console.log('Chart created and cached for future redraws');
         } catch (error) {
           console.error('Error creating or drawing chart:', error);
           chartElement.innerHTML = '<div style="color: white; padding: 20px;">Error creating chart: ' + error.message + '</div>';
@@ -240,13 +359,12 @@ window.createChart_{{ chart_date }} = function() {
     }
   }
 
-  function addNowLine(chart, chartElement, validData) {
-    // Initial draw - just call the internal function
-    addNowLineInternal(chart, chartElement, validData);
-  }
-
   function drawMajorGridlines(chart, chartElement, minPrice, maxPrice) {
     try {
+      // Remove any existing custom gridlines to prevent duplicates
+      const existingLines = chartElement.querySelectorAll('.major-gridline, .minor-gridline, .custom-gridlines-group');
+      existingLines.forEach(line => line.remove());
+      
       const svgElement = chartElement.querySelector('svg');
       if (!svgElement) return;
       
@@ -254,31 +372,55 @@ window.createChart_{{ chart_date }} = function() {
       const chartArea = chartLayout.getChartAreaBoundingBox();
       if (!chartArea) return;
       
-      // Draw brighter lines at 5-cent intervals
-      for (let price = minPrice; price <= maxPrice; price += 5) {
+      // Create a group element for all gridlines to ensure proper z-order
+      const gridlinesGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      gridlinesGroup.setAttribute('class', 'custom-gridlines-group');
+      
+      // Draw all gridlines (1-cent intervals)
+      for (let price = minPrice; price <= maxPrice; price += 1) {
         try {
           const yPosition = chartLayout.getYLocation(price);
+          const isMajor = price % 5 === 0;
           
-          // Create horizontal line for major gridline
-          const majorLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-          majorLine.setAttribute('class', 'major-gridline');
-          majorLine.setAttribute('x1', chartArea.left.toString());
-          majorLine.setAttribute('y1', yPosition.toString());
-          majorLine.setAttribute('x2', (chartArea.left + chartArea.width).toString());
-          majorLine.setAttribute('y2', yPosition.toString());
-          majorLine.setAttribute('stroke', '#999999');  // Even brighter than before
-          majorLine.setAttribute('stroke-width', '1');
-          majorLine.setAttribute('opacity', '0.9');
+          // Create horizontal line
+          const gridLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          gridLine.setAttribute('class', isMajor ? 'major-gridline' : 'minor-gridline');
+          gridLine.setAttribute('x1', chartArea.left.toString());
+          gridLine.setAttribute('y1', yPosition.toString());
+          gridLine.setAttribute('x2', (chartArea.left + chartArea.width).toString());
+          gridLine.setAttribute('y2', yPosition.toString());
+          gridLine.setAttribute('stroke', isMajor ? '#999999' : '#444444');  // Brighter for major, darker for minor
+          gridLine.setAttribute('stroke-width', '1');
+          gridLine.setAttribute('opacity', isMajor ? '0.9' : '0.6');
           
-          svgElement.appendChild(majorLine);
+          // Add gridline to the group
+          gridlinesGroup.appendChild(gridLine);
         } catch (e) {
           // Skip if getYLocation fails for this price
-          console.warn('Could not draw major gridline for price:', price);
+          console.warn('Could not draw gridline for price:', price);
         }
       }
+      
+      // Insert the entire gridlines group at the beginning (behind chart elements)
+      // Find the first child that's not a <defs> element
+      let insertPoint = svgElement.firstChild;
+      while (insertPoint && insertPoint.tagName === 'defs') {
+        insertPoint = insertPoint.nextSibling;
+      }
+      
+      if (insertPoint) {
+        svgElement.insertBefore(gridlinesGroup, insertPoint);
+      } else {
+        svgElement.appendChild(gridlinesGroup);
+      }
     } catch (error) {
-      console.error('Error drawing major gridlines:', error);
+      console.error('Error drawing gridlines:', error);
     }
+  }
+
+  function addNowLine(chart, chartElement, validData) {
+    // Initial draw - just call the internal function
+    addNowLineInternal(chart, chartElement, validData);
   }
 
   function addNowLineInternal(chart, chartElement, validData) {
