@@ -246,12 +246,13 @@ window.createChart_{{ chart_date }} = function() {
           
           // Return row with tooltip for each series: 
           // [Time, LowPrice, LowTooltip, MediumPrice, MediumTooltip, HighPrice, HighTooltip, Margin, MarginTooltip]
+          // Use null instead of 0 to make Google Charts skip zero segments entirely
           return [
             hourStr,
-            lowPrice, tooltip,      // Low price + tooltip
-            mediumPrice, tooltip,   // Medium price + tooltip  
-            highPrice, tooltip,     // High price + tooltip
-            marginPrice, tooltip    // Margin + tooltip
+            lowPrice > 0 ? lowPrice : null, tooltip,          // Low price + tooltip (null if zero)
+            mediumPrice > 0 ? mediumPrice : null, tooltip,    // Medium price + tooltip (null if zero)
+            highPrice > 0 ? highPrice : null, tooltip,        // High price + tooltip (null if zero)
+            marginPrice !== 0 ? marginPrice : null, tooltip   // Margin + tooltip (null only if exactly zero)
           ];
         });
         
