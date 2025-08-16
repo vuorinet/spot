@@ -26,7 +26,7 @@ logging.basicConfig(
 logger = logging.getLogger("spot")
 
 ENTSOE_API_TOKEN = os.environ.get("ENTSOE_API_TOKEN")
-DEFAULT_MARGIN_CENTS_PER_KWH = float(os.environ.get("DEFAULT_MARGIN_CENTS_PER_KWH", "0"))
+DEFAULT_MARGIN_CENTS_PER_KWH = float(os.environ.get("DEFAULT_MARGIN_CENTS_PER_KWH", "0.60"))
 VAT_RATE = 0.255
 HELSINKI_TZ = tz.gettz("Europe/Helsinki")
 
