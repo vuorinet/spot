@@ -240,8 +240,6 @@ def create_app() -> FastAPI:
 
     async def calculate_global_price_range(margin_cents: float) -> tuple[float, float]:
         """Calculate global min/max price range for consistent chart scaling"""
-        LOW_PRICE = 5.0  # cents/kWh
-        HIGH_PRICE = 15.0  # cents/kWh
         
         global_max = float('-inf')
         global_min = float('inf')
@@ -265,20 +263,12 @@ def create_app() -> FastAPI:
                 # Convert EUR/MWh to cents/kWh (with VAT included)
                 spot_cents_with_vat = eur_mwh_to_cents_kwh(it.price_eur_per_mwh)
                 
-                # Check all the individual components that will be stacked in the chart
-                low_electricity = spot_cents_with_vat if spot_cents_with_vat < LOW_PRICE else 0
-                medium_electricity = spot_cents_with_vat if LOW_PRICE <= spot_cents_with_vat < HIGH_PRICE else 0  
-                high_electricity = spot_cents_with_vat if spot_cents_with_vat >= HIGH_PRICE else 0
-                
-                # Find min/max from spot price components and margin
-                spot_values = [low_electricity, medium_electricity, high_electricity]
-                global_max = max(global_max, max(spot_values))
-                global_min = min(global_min, min(spot_values))
-                
-                # Also check the total stacked value (spot + margin)
+                # Calculate the total price (spot + margin) that will be displayed
                 total_price = spot_cents_with_vat + margin_cents
+                
+                # Track the actual range of total prices
                 global_max = max(global_max, total_price)
-                global_min = min(global_min, min(spot_values))  # Margin doesn't affect minimum
+                global_min = min(global_min, spot_cents_with_vat)  # Spot price can be negative, margin is always added on top
                 
                 intervals_processed += 1
         
@@ -290,18 +280,29 @@ def create_app() -> FastAPI:
             global_min = 0.0
             global_max = 25.0
         
-        # Round min/max prices like Angular component
-        max_price_rounded = max(25, (int(global_max / 5) + 1) * 5)  # Minimum 25
-        
-        # For minimum: only start from 0 if there are no negative prices
-        if global_min < 0:
-            min_price_rounded = int(global_min / 5) * 5  # Round down for negative prices
-            if global_min % 5 != 0:  # If not exactly divisible, round further down
-                min_price_rounded -= 5
+        # Round to 5-cent increments as requested
+        # Maximum: round UP to next 5 cents above highest price
+        if global_max <= 0:
+            max_price_rounded = 5  # Minimum scale of 5 cents for visibility
         else:
-            min_price_rounded = 0  # Start from 0 for positive prices
+            # If already a multiple of 5, add 5 more; otherwise round up to next 5
+            if global_max % 5 == 0:
+                max_price_rounded = int(global_max) + 5
+            else:
+                max_price_rounded = ((int(global_max) // 5) + 1) * 5
         
-        logger.info(f"Global price range: {global_min:.2f} -> {global_max:.2f}, rounded: {min_price_rounded} -> {max_price_rounded}")
+        # Minimum: round DOWN to next 5 cents below lowest price, or 0 for positive prices
+        if global_min >= 0:
+            min_price_rounded = 0  # Start from 0 for positive prices
+        else:
+            # For negative prices, round down to next 5-cent boundary
+            import math
+            if global_min % 5 == 0:
+                min_price_rounded = int(global_min) - 5
+            else:
+                min_price_rounded = math.floor(global_min / 5) * 5
+        
+        logger.info(f"Global price range: {global_min:.2f} -> {global_max:.2f}, rounded: {min_price_rounded} -> {max_price_rounded} (margin: {margin_cents:.3f})")
         
         return min_price_rounded, max_price_rounded
 
@@ -567,12 +568,23 @@ def create_app() -> FastAPI:
                     if old_tomorrow is None and cache.tomorrow is not None:
                         logger.info(f"Successfully retrieved tomorrow's prices ({tomorrow_d})")
                     
-                    # Check for data updates (republications)
-                    if old_tomorrow is not None and cache.tomorrow is not None:
-                        if old_tomorrow.published_at_utc != cache.tomorrow.published_at_utc:
-                            logger.info("Tomorrow's price data was republished")
-                        elif len(old_tomorrow.intervals) != len(cache.tomorrow.intervals):
-                            logger.info("Tomorrow's price data changed (different interval count)")
+                    # Check for data updates (republications) for both today and tomorrow
+                    for name, old_data, new_data in [("today", old_today, cache.today), ("tomorrow", old_tomorrow, cache.tomorrow)]:
+                        if old_data is not None and new_data is not None:
+                            # Check if data was republished
+                            if old_data.published_at_utc != new_data.published_at_utc:
+                                logger.info(f"{name.title()}'s price data was republished")
+                                # Send update event to refresh charts with new scaling
+                                await notify_cache_event(f"{name}_updated", {"date": (today_d if name == "today" else tomorrow_d).isoformat(), "reason": "republished"})
+                            # Check if interval count changed
+                            elif len(old_data.intervals) != len(new_data.intervals):
+                                logger.info(f"{name.title()}'s price data changed (different interval count)")
+                                await notify_cache_event(f"{name}_updated", {"date": (today_d if name == "today" else tomorrow_d).isoformat(), "reason": "interval_count_changed"})
+                            # Check if actual price values changed
+                            elif any(old_it.price_eur_per_mwh != new_it.price_eur_per_mwh 
+                                   for old_it, new_it in zip(old_data.intervals, new_data.intervals)):
+                                logger.info(f"{name.title()}'s price values changed")
+                                await notify_cache_event(f"{name}_updated", {"date": (today_d if name == "today" else tomorrow_d).isoformat(), "reason": "price_values_changed"})
                     
                     # Reset failure counter on success
                     if consecutive_failures > 0:
