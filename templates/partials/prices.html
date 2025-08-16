@@ -108,16 +108,10 @@ window.createChart_{{ chart_date }} = function() {
         bottom: isMobile ? 15 : 40
       },
       series: {
-        0: { color: '#2ecc71', strokeWidth: 0 }, // Green, no border
-        1: { color: '#f1c40f', strokeWidth: 0 }, // Yellow, no border  
-        2: { color: '#e74c3c', strokeWidth: 0 }, // Red, no border
-        3: { color: '#666666', strokeWidth: 0 }  // Gray for margin, no border
-      },
-      annotations: {
-        boxStyle: {
-          stroke: 'none',
-          strokeWidth: 0
-        }
+        0: { color: '#2ecc71' }, // Green
+        1: { color: '#f1c40f' }, // Yellow  
+        2: { color: '#e74c3c' }, // Red
+        3: { color: '#666666' }  // Gray for margin
       },
       tooltip: {
         isHtml: true,
@@ -347,19 +341,13 @@ window.createChart_{{ chart_date }} = function() {
           },
           backgroundColor: 'black',
           series: {
-            0: { color: '#2ecc71', strokeWidth: 0 },  // green for low prices, no border
-            1: { color: '#f1c40f', strokeWidth: 0 },  // yellow for medium prices, no border
-            2: { color: '#e74c3c', strokeWidth: 0 },  // red for high prices, no border
-            3: { color: '#666666', strokeWidth: 0 }   // gray for margin, no border
+            0: { color: '#2ecc71' },  // green for low prices
+            1: { color: '#f1c40f' },  // yellow for medium prices
+            2: { color: '#e74c3c' },  // red for high prices
+            3: { color: '#666666' }   // gray for margin
           },
           bar: {
             groupWidth: '70%'
-          },
-          annotations: {
-            boxStyle: {
-              stroke: 'none',
-              strokeWidth: 0
-            }
           },
           tooltip: {
             isHtml: true,
