@@ -217,14 +217,14 @@ window.createChart_{{ chart_date }} = function() {
                 <div style="font-weight: bold; margin-bottom: 4px; color: #333;">${timeFormatted}</div>
             `;
             
-            // Add each price component if it has a value
-            if (lowPrice && lowPrice > 0) {
+            // Add each price component if it has a value (including negative values)
+            if (lowPrice !== 0 && lowPrice !== null && lowPrice !== undefined) {
               tooltipContent += `<div style="color: #666;">Low price: <strong>${lowPrice.toFixed(2)} c/kWh</strong></div>`;
             }
-            if (mediumPrice && mediumPrice > 0) {
+            if (mediumPrice !== 0 && mediumPrice !== null && mediumPrice !== undefined) {
               tooltipContent += `<div style="color: #666;">Medium price: <strong>${mediumPrice.toFixed(2)} c/kWh</strong></div>`;
             }
-            if (highPrice && highPrice > 0) {
+            if (highPrice !== 0 && highPrice !== null && highPrice !== undefined) {
               tooltipContent += `<div style="color: #666;">High price: <strong>${highPrice.toFixed(2)} c/kWh</strong></div>`;
             }
             
@@ -247,11 +247,12 @@ window.createChart_{{ chart_date }} = function() {
           // Return row with tooltip for each series: 
           // [Time, LowPrice, LowTooltip, MediumPrice, MediumTooltip, HighPrice, HighTooltip, Margin, MarginTooltip]
           // Use null instead of 0 to make Google Charts skip zero segments entirely
+          // Note: Prices can be negative, so only null out if exactly zero
           return [
             hourStr,
-            lowPrice > 0 ? lowPrice : null, tooltip,          // Low price + tooltip (null if zero)
-            mediumPrice > 0 ? mediumPrice : null, tooltip,    // Medium price + tooltip (null if zero)
-            highPrice > 0 ? highPrice : null, tooltip,        // High price + tooltip (null if zero)
+            lowPrice !== 0 ? lowPrice : null, tooltip,        // Low price + tooltip (null only if exactly zero)
+            mediumPrice !== 0 ? mediumPrice : null, tooltip,  // Medium price + tooltip (null only if exactly zero)
+            highPrice !== 0 ? highPrice : null, tooltip,      // High price + tooltip (null only if exactly zero)
             marginPrice !== 0 ? marginPrice : null, tooltip   // Margin + tooltip (null only if exactly zero)
           ];
         });
