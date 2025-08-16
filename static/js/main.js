@@ -173,51 +173,47 @@
     }
   }, 5 * 60 * 1000); // 5 minutes
 
-  // Handle orientation changes and significant window resize for responsive charts
-  let resizeTimeout;
-  let lastWidth = window.innerWidth;
-  let lastHeight = window.innerHeight;
+  // Handle orientation changes only on mobile devices
+  let currentOrientation = screen.orientation ? screen.orientation.angle : window.orientation;
+  let orientationChangeTimeout;
   
-  function handleResize() {
-    clearTimeout(resizeTimeout);
-    resizeTimeout = setTimeout(() => {
-      const currentWidth = window.innerWidth;
-      const currentHeight = window.innerHeight;
+  function handleOrientationChange() {
+    clearTimeout(orientationChangeTimeout);
+    orientationChangeTimeout = setTimeout(() => {
+      const newOrientation = screen.orientation ? screen.orientation.angle : window.orientation;
       
-      // Only redraw if there's a significant size change (not just scroll-related viewport changes)
-      const widthDiff = Math.abs(currentWidth - lastWidth);
-      const heightDiff = Math.abs(currentHeight - lastHeight);
-      
-      // Threshold for significant changes (more than 50px change or 10% change)
-      const significantWidthChange = widthDiff > 50 || widthDiff / lastWidth > 0.1;
-      const significantHeightChange = heightDiff > 100 || heightDiff / lastHeight > 0.15; // Higher threshold for height (mobile browser UI)
-      
-      if (significantWidthChange || significantHeightChange) {
-        console.log(`Significant resize detected: ${lastWidth}x${lastHeight} → ${currentWidth}x${currentHeight}`);
-        console.log('Redrawing charts for layout change');
+      if (newOrientation !== currentOrientation) {
+        console.log(`Orientation changed: ${currentOrientation}° → ${newOrientation}°`);
+        currentOrientation = newOrientation;
         
-        // Update stored dimensions
-        lastWidth = currentWidth;
-        lastHeight = currentHeight;
-        
-        // Redraw charts without reloading data
+        // Only redraw charts on actual orientation change
         window.redrawCharts();
-      } else {
-        console.log(`Minor resize ignored: ${lastWidth}x${lastHeight} → ${currentWidth}x${currentHeight}`);
       }
-    }, 500); // Longer debounce to avoid scroll-related triggers
+    }, 300); // Wait for orientation change to complete
   }
-
-  window.addEventListener('resize', handleResize);
-  window.addEventListener('orientationchange', () => {
-    console.log('Orientation change detected');
-    // Always redraw on orientation change, but with a delay
-    setTimeout(() => {
-      lastWidth = window.innerWidth;
-      lastHeight = window.innerHeight;
-      window.redrawCharts();
-    }, 200);
-  });
+  
+  // Only listen for orientation changes, ignore resize events on mobile
+  if (window.innerWidth <= 900) {
+    console.log('Mobile device detected - listening for orientation changes only');
+    window.addEventListener('orientationchange', handleOrientationChange);
+    
+    // Also listen to screen.orientation.onchange if available (more reliable)
+    if (screen.orientation && screen.orientation.addEventListener) {
+      screen.orientation.addEventListener('change', handleOrientationChange);
+    }
+  } else {
+    // On desktop, only listen for actual window resize (not mobile scrolling issues)
+    console.log('Desktop device detected - listening for window resize');
+    let resizeTimeout;
+    
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(() => {
+        console.log('Desktop window resized - redrawing charts');
+        window.redrawCharts();
+      }, 300);
+    });
+  }
 
   // Add HTMX event listeners for debugging chart swaps
   d.body.addEventListener('htmx:afterSwap', function(evt) {
@@ -236,13 +232,14 @@
     const todayChartElement = d.querySelector('#todayChart [id*="googleChart"]');
     const tomorrowChartElement = d.querySelector('#tomorrowChart [id*="googleChart"]');
     
-    if (todayChartElement && window.createChart_today) {
-      console.log('Redrawing today chart');
+    // Only redraw if charts actually exist (avoid double drawing on page load)
+    if (todayChartElement && todayChartElement._chartInstance && window.createChart_today) {
+      console.log('Redrawing today chart with cached data');
       window.createChart_today();
     }
     
-    if (tomorrowChartElement && window.createChart_tomorrow) {
-      console.log('Redrawing tomorrow chart');
+    if (tomorrowChartElement && tomorrowChartElement._chartInstance && window.createChart_tomorrow) {
+      console.log('Redrawing tomorrow chart with cached data');
       window.createChart_tomorrow();
     }
   };
