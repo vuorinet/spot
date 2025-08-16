@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import asyncio
 from datetime import date, datetime, timedelta, timezone
+import json
 import os
 import typing as t
 import logging
@@ -227,6 +228,15 @@ def create_app() -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse)
     async def home(request: Request, margin: float | None = Query(default=None)) -> HTMLResponse:
+        # If no margin parameter provided, redirect to show default margin in URL
+        if margin is None:
+            from fastapi.responses import RedirectResponse
+            redirect_url = f"/?margin={DEFAULT_MARGIN_CENTS_PER_KWH:.2f}"
+            return RedirectResponse(url=redirect_url, status_code=302)
+        
+        # Validate margin parameter
+        margin = validate_margin(margin)
+        
         # Only ensure cache if it's not already populated (avoid delays on first page load)
         if cache.today is None:
             logger.info("Cache not warmed up yet, ensuring cache for first page load")
@@ -237,7 +247,7 @@ def create_app() -> FastAPI:
         return templates.TemplateResponse("index.html", {
             "request": request,
             "app_name": "Spot is a dog",
-            "margin_cents": margin if margin is not None else DEFAULT_MARGIN_CENTS_PER_KWH,
+            "margin_cents": margin,
             "app_version": os.environ.get("SPOT_VERSION", "dev"),
         })
 
@@ -343,6 +353,9 @@ def create_app() -> FastAPI:
         """API endpoint that provides data in Google Charts format like the Angular component"""
         try:
             margin_cents = margin if margin is not None else DEFAULT_MARGIN_CENTS_PER_KWH
+            # Validate margin parameter if provided
+            if margin is not None:
+                margin_cents = validate_margin(margin_cents)
             
             # Handle special date strings and convert to actual dates in Helsinki timezone
             now_hel = datetime.now(tz=HELSINKI_TZ)
@@ -469,6 +482,14 @@ def create_app() -> FastAPI:
             return "yellow"
         return "red"
 
+    def validate_margin(margin: float) -> float:
+        """Validate margin parameter and ensure it's within acceptable range"""
+        if margin < -5.0:
+            raise HTTPException(status_code=400, detail="Margin cannot be less than -5.0 cents per kWh")
+        if margin > 5.0:
+            raise HTTPException(status_code=400, detail="Margin cannot be greater than 5.0 cents per kWh")
+        return margin
+
     def build_view_model(dp: DayPrices, margin_cents: float) -> dict[str, t.Any]:
         entries: list[dict[str, t.Any]] = []
         for it in dp.intervals:
@@ -488,6 +509,9 @@ def create_app() -> FastAPI:
     @app.get("/partials/prices", response_class=HTMLResponse)
     async def partial_prices(request: Request, date: str, margin: float | None = None) -> HTMLResponse:
         margin_cents = margin if margin is not None else DEFAULT_MARGIN_CENTS_PER_KWH
+        # Validate margin parameter if provided
+        if margin is not None:
+            margin_cents = validate_margin(margin_cents)
         logger.debug("/partials/prices date=%s margin=%.3f", date, margin_cents)
         now_hel = datetime.now(tz=HELSINKI_TZ)
         base_date = now_hel.date()
