@@ -227,8 +227,13 @@ def create_app() -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse)
     async def home(request: Request, margin: float | None = Query(default=None)) -> HTMLResponse:
-        # Normalize margin via URL injection if missing (handled client-side)
-        await ensure_cache_now()
+        # Only ensure cache if it's not already populated (avoid delays on first page load)
+        if cache.today is None:
+            logger.info("Cache not warmed up yet, ensuring cache for first page load")
+            await ensure_cache_now()
+        else:
+            logger.debug("Cache already warm, serving page immediately")
+        
         return templates.TemplateResponse("index.html", {
             "request": request,
             "app_name": "Spot is a dog",
@@ -261,8 +266,10 @@ def create_app() -> FastAPI:
         global_max = float('-inf')
         global_min = float('inf')
         
-        # Ensure cache is populated
-        await ensure_cache_now()
+        # Cache should already be populated from startup
+        if cache.today is None:
+            logger.warning("Cache not warm during price range calculation, ensuring cache")
+            await ensure_cache_now()
         
         datasets_checked = 0
         intervals_processed = 0
@@ -349,8 +356,12 @@ def create_app() -> FastAPI:
                 target = datetime.fromisoformat(date_str).date()
                 logger.debug("/api/chart-data date=%s margin=%.3f", target, margin_cents)
             
-            # Get all available data from cache first
-            await ensure_cache_now()
+            # Get all available data from cache first (cache should be warm from startup)
+            if cache.today is None:
+                logger.warning("Cache not warm during chart data request, ensuring cache")
+                await ensure_cache_now()
+            else:
+                logger.debug("Using warm cache for chart data")
             
             # Calculate global price range for consistent scaling
             global_min_price, global_max_price = await calculate_global_price_range(margin_cents)
