@@ -46,6 +46,7 @@ window.createChart_{{ chart_date }} = function() {
       .then(response => response.json())
       .then(data => {
         console.log('Chart data received for', date, ':', data);
+        console.log('Y-axis range:', data.minPrice, 'to', data.maxPrice);
         
         // Update date string
         if (dateStringEl) {
@@ -92,6 +93,10 @@ window.createChart_{{ chart_date }} = function() {
             title: 'Price (cnt/kWh)',
             minValue: data.minPrice,
             maxValue: data.maxPrice,
+            viewWindow: {
+              min: data.minPrice,
+              max: data.maxPrice
+            },
             textStyle: {
               fontSize: 12,
               color: 'white'

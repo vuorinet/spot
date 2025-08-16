@@ -303,6 +303,7 @@ def create_app() -> FastAPI:
                 min_price_rounded = math.floor(global_min / 5) * 5
         
         logger.info(f"Global price range: {global_min:.2f} -> {global_max:.2f}, rounded: {min_price_rounded} -> {max_price_rounded} (margin: {margin_cents:.3f})")
+        logger.debug(f"Scaling calculation details: datasets={datasets_checked}, intervals={intervals_processed}")
         
         return min_price_rounded, max_price_rounded
 
