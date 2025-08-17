@@ -159,6 +159,23 @@ window.createChart_{{ chart_date }} = function() {
       .then(response => response.json())
       .then(data => {
         console.log('Chart data received for', date, ':', data);
+        
+        // Track when this chart's data was fetched with metadata
+        const fetchTime = Date.now();
+        const fetchDate = new Date(fetchTime);
+        
+        if (window.chartDataTimestamps) {
+          window.chartDataTimestamps[date] = fetchTime;
+          console.log(`Updated ${date} chart data timestamp:`, fetchDate.toLocaleTimeString());
+        }
+        
+        if (window.chartDataMetadata) {
+          window.chartDataMetadata[date] = {
+            fetchedDate: fetchDate.toDateString(),
+            fetchedHour: fetchDate.getHours()
+          };
+          console.log(`Updated ${date} chart metadata:`, window.chartDataMetadata[date]);
+        }
         console.log('Y-axis range:', data.minPrice, 'to', data.maxPrice);
         console.log('First few data rows:', data.data.slice(0, 3));
         console.log('Viewport width:', window.innerWidth, 'isMobile:', window.innerWidth <= 768);

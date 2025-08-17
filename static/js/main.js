@@ -55,6 +55,46 @@
         // Handle cache updates (midnight rotation, new data arrivals)
         if (event.type === 'cache_rotated' || event.type === 'today_updated' || event.type === 'tomorrow_updated') {
           console.log(`Cache event received: ${event.type}`, event);
+          
+          // Show notification for important price updates
+          if (event.type === 'tomorrow_updated') {
+            const reason = event.reason || 'new data available';
+            console.log(`Tomorrow's prices updated: ${reason}`);
+            
+            // Show a brief notification for tomorrow price updates
+            const existingNotification = d.querySelector('.price-update-notification');
+            if (existingNotification) {
+              existingNotification.remove();
+            }
+            
+            const notification = d.createElement('div');
+            notification.className = 'price-update-notification';
+            notification.style.cssText = `
+              position: fixed;
+              top: 20px;
+              left: 50%;
+              transform: translateX(-50%);
+              background: #2ecc71;
+              color: white;
+              padding: 10px 16px;
+              border-radius: 4px;
+              font-size: 14px;
+              z-index: 1001;
+              opacity: 0.95;
+              box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            `;
+            notification.textContent = `📈 Tomorrow's electricity prices updated!`;
+            d.body.appendChild(notification);
+            
+            // Remove notification after 4 seconds
+            setTimeout(() => {
+              if (notification.parentNode) {
+                notification.remove();
+              }
+            }, 4000);
+          }
+          
+          // Always refresh charts when server notifies us of new data
           window.refreshCharts();
         }
       };
@@ -107,6 +147,21 @@
 
   // Track the current date to detect midnight transitions
   let lastKnownDate = new Date().toDateString();
+  
+  // Track when we last checked for activity (to detect sleep/wake cycles)
+  let lastActivityCheck = Date.now();
+  
+  // Track when chart data was last fetched and key metadata
+  window.chartDataTimestamps = {
+    today: null,
+    tomorrow: null
+  };
+  
+  // Track additional metadata for smart refresh decisions
+  window.chartDataMetadata = {
+    today: { fetchedDate: null, fetchedHour: null },
+    tomorrow: { fetchedDate: null, fetchedHour: null }
+  };
 
   // Function to check if date has changed and refresh if needed
   window.checkDateChange = function() {
@@ -121,12 +176,113 @@
     return false;
   };
 
+  // Function to check if device likely woke up from sleep
+  window.checkWakeFromSleep = function() {
+    const now = Date.now();
+    const timeSinceLastCheck = now - lastActivityCheck;
+    lastActivityCheck = now;
+    
+    // If more than 10 minutes passed since last check, likely woke from sleep
+    const SLEEP_THRESHOLD = 10 * 60 * 1000; // 10 minutes
+    if (timeSinceLastCheck > SLEEP_THRESHOLD) {
+      console.log(`Potential wake from sleep detected: ${Math.round(timeSinceLastCheck / 1000 / 60)} minutes inactive`);
+      return true;
+    }
+    return false;
+  };
+
+  // Function to check if chart data is stale and needs refresh
+  window.checkStaleData = function() {
+    const now = new Date();
+    const nowTimestamp = now.getTime();
+    const currentHour = now.getHours();
+    const currentDate = now.toDateString();
+    
+    const STALE_THRESHOLD = 30 * 60 * 1000; // 30 minutes
+    let needsRefresh = false;
+    let reasons = [];
+    
+    // Check today's data
+    if (window.chartDataTimestamps.today && window.chartDataMetadata.today) {
+      const todayAge = nowTimestamp - window.chartDataTimestamps.today;
+      const fetchedDate = window.chartDataMetadata.today.fetchedDate;
+      
+      // Basic staleness check
+      if (todayAge > STALE_THRESHOLD) {
+        reasons.push(`today data ${Math.round(todayAge / 1000 / 60)} min old`);
+        needsRefresh = true;
+      }
+      
+      // Cross-day check: if data was fetched on a different date
+      if (fetchedDate && fetchedDate !== currentDate) {
+        reasons.push(`today data from previous day (${fetchedDate})`);
+        needsRefresh = true;
+      }
+    }
+    
+    // Check tomorrow's data with smart 2 PM logic
+    if (window.chartDataTimestamps.tomorrow && window.chartDataMetadata.tomorrow) {
+      const tomorrowAge = nowTimestamp - window.chartDataTimestamps.tomorrow;
+      const fetchedHour = window.chartDataMetadata.tomorrow.fetchedHour;
+      const fetchedDate = window.chartDataMetadata.tomorrow.fetchedDate;
+      
+      // Basic staleness check
+      if (tomorrowAge > STALE_THRESHOLD) {
+        reasons.push(`tomorrow data ${Math.round(tomorrowAge / 1000 / 60)} min old`);
+        needsRefresh = true;
+      }
+      
+      // Cross-day check: if data was fetched on a different date
+      if (fetchedDate && fetchedDate !== currentDate) {
+        reasons.push(`tomorrow data from previous day (${fetchedDate})`);
+        needsRefresh = true;
+      }
+      
+      // Smart 2 PM check: if data was fetched before 2 PM and it's now after 2 PM
+      if (fetchedHour !== null && fetchedHour < 14 && currentHour >= 14) {
+        reasons.push(`tomorrow data fetched pre-2PM (${fetchedHour}:00), now post-2PM`);
+        needsRefresh = true;
+      }
+      
+      // Extended afternoon check: during 2-6 PM, be more aggressive about refreshing
+      // tomorrow's data (since prices can be published late or updated)
+      if (currentHour >= 14 && currentHour <= 18) {
+        const AFTERNOON_STALE_THRESHOLD = 20 * 60 * 1000; // 20 minutes during afternoon
+        if (tomorrowAge > AFTERNOON_STALE_THRESHOLD) {
+          reasons.push(`tomorrow data ${Math.round(tomorrowAge / 1000 / 60)} min old during afternoon hours`);
+          needsRefresh = true;
+        }
+      }
+    }
+    
+    if (needsRefresh && reasons.length > 0) {
+      console.log(`Stale data detected: ${reasons.join(', ')}`);
+    }
+    
+    return needsRefresh;
+  };
+
   // Listen for window focus and visibility changes
   window.addEventListener('focus', () => {
-    console.log('Window focused - checking for date change and updating yellow line');
-    if (!window.checkDateChange()) {
-      // Only update yellow line if date didn't change (charts would be refreshed anyway)
-      window.updateNowLineImmediately();
+    console.log('Window focused - checking for sleep/wake, date change, and stale data');
+    
+    // Check if we likely woke from sleep
+    const wokeFromSleep = window.checkWakeFromSleep();
+    
+    // Check for date change first (most important)
+    const dateChanged = window.checkDateChange();
+    
+    if (!dateChanged) {
+      // If date didn't change, check if data is stale or we woke from sleep
+      const hasStaleData = window.checkStaleData();
+      
+      if (wokeFromSleep || hasStaleData) {
+        console.log('Refreshing charts due to wake from sleep or stale data');
+        window.refreshCharts();
+      } else {
+        // Only update yellow line if no refresh is needed
+        window.updateNowLineImmediately();
+      }
     }
   });
 
@@ -135,10 +291,25 @@
 
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) {
-      console.log('Document became visible - checking for date change and updating yellow line');
-      if (!window.checkDateChange()) {
-        // Only update yellow line if date didn't change (charts would be refreshed anyway)
-        window.updateNowLineImmediately();
+      console.log('Document became visible - checking for sleep/wake, date change, and stale data');
+      
+      // Check if we likely woke from sleep
+      const wokeFromSleep = window.checkWakeFromSleep();
+      
+      // Check for date change first (most important)
+      const dateChanged = window.checkDateChange();
+      
+      if (!dateChanged) {
+        // If date didn't change, check if data is stale or we woke from sleep
+        const hasStaleData = window.checkStaleData();
+        
+        if (wokeFromSleep || hasStaleData) {
+          console.log('Refreshing charts due to wake from sleep or stale data');
+          window.refreshCharts();
+        } else {
+          // Only update yellow line if no refresh is needed
+          window.updateNowLineImmediately();
+        }
       }
     } else {
       console.log('Document became hidden - hiding yellow line');
@@ -155,10 +326,25 @@
       if (document.hidden) {
         wasHidden = true;
       } else if (wasHidden) {
-        console.log('Screen likely re-enabled - checking for date change and updating yellow line');
+        console.log('Screen likely re-enabled - checking for sleep/wake, date change, and stale data');
         setTimeout(() => {
-          if (!window.checkDateChange()) {
-            window.updateNowLineImmediately();
+          // Check if we likely woke from sleep
+          const wokeFromSleep = window.checkWakeFromSleep();
+          
+          // Check for date change first (most important)
+          const dateChanged = window.checkDateChange();
+          
+          if (!dateChanged) {
+            // If date didn't change, check if data is stale or we woke from sleep
+            const hasStaleData = window.checkStaleData();
+            
+            if (wokeFromSleep || hasStaleData) {
+              console.log('Refreshing charts due to wake from sleep or stale data');
+              window.refreshCharts();
+            } else {
+              // Only update yellow line if no refresh is needed
+              window.updateNowLineImmediately();
+            }
           }
         }, 100); // Small delay to ensure everything is ready
         wasHidden = false;
@@ -166,12 +352,52 @@
     });
   }
 
-  // Periodic date check as backup (every 5 minutes when page is visible)
+  // Periodic checks as backup (every 5 minutes when page is visible)
   setInterval(() => {
     if (!document.hidden) {
-      window.checkDateChange();
+      // Update activity timestamp to detect sleep/wake cycles
+      lastActivityCheck = Date.now();
+      
+      // Check for date change (triggers refresh if needed)
+      const dateChanged = window.checkDateChange();
+      
+      // If date didn't change, check for stale data
+      if (!dateChanged && window.checkStaleData()) {
+        console.log('Periodic check detected stale data - refreshing charts');
+        window.refreshCharts();
+      }
     }
   }, 5 * 60 * 1000); // 5 minutes
+
+  // More frequent price update check (every 10 minutes during key hours)
+  setInterval(() => {
+    if (!document.hidden) {
+      const now = new Date();
+      const hour = now.getHours();
+      
+      // Check more frequently during key price update times:
+      // - Morning hours (6-10 AM) when today's final prices might update
+      // - Critical afternoon hours (2-6 PM) when tomorrow's prices are published/updated
+      const isKeyHour = (hour >= 6 && hour <= 10) || (hour >= 14 && hour <= 18);
+      
+      if (isKeyHour) {
+        console.log(`Key hour check (${hour}:00) - checking for stale data`);
+        
+        // Use the smart stale data logic that includes 2 PM awareness
+        if (window.checkStaleData()) {
+          console.log('Key hour check triggered refresh');
+          window.refreshCharts();
+        }
+        
+        // Special case: during prime tomorrow publication time (2-4 PM),
+        // check for tomorrow data that might be missing entirely
+        if (hour >= 14 && hour <= 16 && !window.chartDataTimestamps.tomorrow) {
+          console.log('Critical time window: No tomorrow data cached, forcing refresh');
+          window.refreshCharts();
+        }
+      }
+    }
+  }, 10 * 60 * 1000); // 10 minutes
 
   // Handle orientation changes only on mobile devices
   let currentOrientation = screen.orientation ? screen.orientation.angle : window.orientation;
@@ -247,6 +473,37 @@
   // Global function to refresh charts (fetch new data from server)
   window.refreshCharts = function() {
     console.log('Refreshing charts with new data from server...');
+    
+    // Show a brief visual indicator that data is being refreshed
+    const existingIndicator = d.querySelector('.refresh-indicator');
+    if (existingIndicator) {
+      existingIndicator.remove();
+    }
+    
+    const indicator = d.createElement('div');
+    indicator.className = 'refresh-indicator';
+    indicator.style.cssText = `
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: #333;
+      color: #fff;
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-size: 12px;
+      z-index: 1000;
+      opacity: 0.9;
+      pointer-events: none;
+    `;
+    indicator.textContent = 'Updating prices...';
+    d.body.appendChild(indicator);
+    
+    // Remove indicator after 3 seconds
+    setTimeout(() => {
+      if (indicator.parentNode) {
+        indicator.remove();
+      }
+    }, 3000);
     
     // Clean up any existing now line timers before refresh
     const todayChartElement = d.querySelector('#todayChart [id*="googleChart"]');
