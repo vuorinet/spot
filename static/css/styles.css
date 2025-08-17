@@ -156,10 +156,10 @@ html, body {
     gap: 4px; 
     padding: 4px; 
     height: calc(100vh - 50px); 
-    padding-bottom: 20px; /* Add more bottom padding */
+    padding-bottom: 30px; /* Increase bottom padding for x-axis labels */
   }
   .chart-body { 
-    height: calc(100vh - 120px); /* Leave more space for X-axis labels and bottom padding */
+    height: calc(100vh - 140px); /* Leave even more space for X-axis labels */
     min-height: 200px; 
     overflow: visible; /* Allow X-axis labels to be visible outside container */
   }
@@ -170,5 +170,16 @@ html, body {
   .chart-head { 
     font-size: 12px; 
     margin-bottom: 2px; 
+  }
+}
+
+/* Specific adjustments for medium tablets (Samsung Tab S range) */
+@media screen and (min-width: 901px) and (max-width: 1200px) {
+  .charts {
+    padding-bottom: 40px; /* Extra bottom padding for tablets */
+  }
+  .chart-body { 
+    height: calc(100vh - 160px); /* More conservative height for tablets */
+    min-height: 250px; /* Larger minimum for better usability */
   }
 }

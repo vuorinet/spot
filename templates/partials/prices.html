@@ -32,6 +32,7 @@ window.createChart_{{ chart_date }} = function() {
     
     // Recalculate responsive options since viewport may have changed
     const isMobile = window.innerWidth <= 900;
+    const isTablet = window.innerWidth > 900 && window.innerWidth <= 1200;
     const options = {
       title: '',
       hAxis: {
@@ -101,11 +102,11 @@ window.createChart_{{ chart_date }} = function() {
       height: '100%',
       chartArea: { 
         width: isMobile ? '75%' : '90%', // Reduce width to make room for Y-axis labels
-        height: isMobile ? '85%' : '70%',
+        height: isMobile ? '85%' : (isTablet ? '60%' : '70%'),  // Reduced height for tablets to accommodate x-axis
         top: isMobile ? 5 : 15,
         left: isMobile ? 35 : 50, // Increase left margin for Y-axis labels on mobile
         right: isMobile ? 10 : 5,
-        bottom: isMobile ? 15 : 40
+        bottom: isMobile ? 15 : (isTablet ? 60 : 40)  // Extra space for X-axis labels on tablets
       },
       series: {
         0: { color: '#2ecc71' }, // Green
@@ -255,6 +256,7 @@ window.createChart_{{ chart_date }} = function() {
         
         // Responsive chart options based on viewport width
         const isMobile = window.innerWidth <= 900;
+        const isTablet = window.innerWidth > 900 && window.innerWidth <= 1200;
         // Everything above 900px uses the same side-by-side layout
         
         const options = {
@@ -333,11 +335,11 @@ window.createChart_{{ chart_date }} = function() {
           height: '100%',
           chartArea: { 
             width: isMobile ? '75%' : '90%', // Reduce width to make room for Y-axis labels
-            height: isMobile ? '85%' : '70%',  // Even more reduced height for X-axis labels
+            height: isMobile ? '85%' : (isTablet ? '60%' : '70%'),  // Reduced height for tablets to accommodate x-axis
             top: isMobile ? 5 : 15,
             left: isMobile ? 35 : 50, // Increase left margin for Y-axis labels on mobile
             right: isMobile ? 10 : 5,
-            bottom: isMobile ? 15 : 40  // Even more space for X-axis labels on larger screens
+            bottom: isMobile ? 15 : (isTablet ? 60 : 40)  // Extra space for X-axis labels on tablets
           },
           backgroundColor: 'black',
           series: {
