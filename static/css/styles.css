@@ -156,12 +156,13 @@ html, body {
     gap: 4px; 
     padding: 4px; 
     height: calc(100vh - 50px); 
-    padding-bottom: 30px; /* Increase bottom padding for x-axis labels */
+    padding-bottom: 50px; /* Increase bottom padding significantly for x-axis labels */
   }
   .chart-body { 
-    height: calc(100vh - 140px); /* Leave even more space for X-axis labels */
+    height: calc(100vh - 180px); /* Leave much more space for X-axis labels */
     min-height: 200px; 
     overflow: visible; /* Allow X-axis labels to be visible outside container */
+    margin-bottom: 20px; /* Additional margin for x-axis labels */
   }
   .app-header { 
     padding: 6px 10px; 
@@ -176,10 +177,22 @@ html, body {
 /* Specific adjustments for medium tablets (Samsung Tab S range) */
 @media screen and (min-width: 901px) and (max-width: 1200px) {
   .charts {
-    padding-bottom: 40px; /* Extra bottom padding for tablets */
+    padding-bottom: 70px; /* Much more bottom padding for tablets */
   }
   .chart-body { 
-    height: calc(100vh - 160px); /* More conservative height for tablets */
+    height: calc(100vh - 220px); /* Much more conservative height for tablets to prevent x-axis cutoff */
     min-height: 250px; /* Larger minimum for better usability */
+    margin-bottom: 30px; /* Extra margin for x-axis labels on tablets */
+  }
+}
+
+/* Additional tablet landscape-specific fixes */
+@media screen and (min-width: 901px) and (max-width: 1200px) and (orientation: landscape) {
+  .charts {
+    padding-bottom: 80px; /* Even more bottom padding for landscape tablets */
+  }
+  .chart-body { 
+    height: calc(100vh - 240px); /* Very conservative height for landscape tablets */
+    margin-bottom: 40px; /* Maximum margin for x-axis labels */
   }
 }
