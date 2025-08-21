@@ -177,22 +177,22 @@ html, body {
 /* Specific adjustments for medium tablets (Samsung Tab S range) */
 @media screen and (min-width: 901px) and (max-width: 1200px) {
   .charts {
-    padding-bottom: 70px; /* Much more bottom padding for tablets */
+    padding-bottom: 50px; /* Optimized bottom padding for single-row tablet labels */
   }
   .chart-body { 
-    height: calc(100vh - 220px); /* Much more conservative height for tablets to prevent x-axis cutoff */
+    height: calc(100vh - 180px); /* Optimized height for tablets with single-row x-axis labels */
     min-height: 250px; /* Larger minimum for better usability */
-    margin-bottom: 30px; /* Extra margin for x-axis labels on tablets */
+    margin-bottom: 20px; /* Margin for single-row x-axis labels on tablets */
   }
 }
 
 /* Additional tablet landscape-specific fixes */
 @media screen and (min-width: 901px) and (max-width: 1200px) and (orientation: landscape) {
   .charts {
-    padding-bottom: 80px; /* Even more bottom padding for landscape tablets */
+    padding-bottom: 60px; /* Optimized bottom padding for single-row landscape labels */
   }
   .chart-body { 
-    height: calc(100vh - 240px); /* Very conservative height for landscape tablets */
-    margin-bottom: 40px; /* Maximum margin for x-axis labels */
+    height: calc(100vh - 200px); /* Optimized height for landscape tablets with single-row labels */
+    margin-bottom: 25px; /* Margin for single-row x-axis labels */
   }
 }

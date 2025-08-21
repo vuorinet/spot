@@ -56,9 +56,11 @@ window.createChart_{{ chart_date }} = function() {
           }
           return hourTicks;
         })(),
-        minTextSpacing: isTablet ? 25 : (isMobile ? 0 : 15),
+        minTextSpacing: isTablet ? 8 : (isMobile ? 0 : 10),
         maxTextLines: 1,
-        allowContainerBoundaryTextCutoff: false
+        allowContainerBoundaryTextCutoff: false,
+        // Force single row display and optimize spacing
+        textPosition: 'out'
       },
       vAxis: {
         title: '',
@@ -106,7 +108,7 @@ window.createChart_{{ chart_date }} = function() {
             top: isMobile ? 5 : 15,
             left: isMobile ? 35 : 50, // Increase left margin for Y-axis labels on mobile
             right: isMobile ? 10 : 5,
-            bottom: isMobile ? 15 : (isTablet ? 100 : 60)  // Much more space for X-axis labels on tablets
+            bottom: isMobile ? 15 : (isTablet ? 60 : 40)  // Optimized space for single-row X-axis labels on tablets
           },
       series: {
         0: { color: '#2ecc71' }, // Green
@@ -303,9 +305,11 @@ window.createChart_{{ chart_date }} = function() {
               return hourTicks;
             })(),
             // Force labels to be visible with proper spacing for tablets
-            minTextSpacing: isTablet ? 25 : (isMobile ? 0 : 15),
+            minTextSpacing: isTablet ? 8 : (isMobile ? 0 : 10),
             maxTextLines: 1,
-            allowContainerBoundaryTextCutoff: false
+            allowContainerBoundaryTextCutoff: false,
+            // Force single row display and optimize spacing
+            textPosition: 'out'
           },
           vAxis: {
             title: '',  // Remove Y-axis title completely to save space
@@ -356,7 +360,7 @@ window.createChart_{{ chart_date }} = function() {
             top: isMobile ? 5 : 15,
             left: isMobile ? 35 : 50, // Increase left margin for Y-axis labels on mobile
             right: isMobile ? 10 : 5,
-            bottom: isMobile ? 15 : (isTablet ? 100 : 60)  // Much more space for X-axis labels on tablets
+            bottom: isMobile ? 15 : (isTablet ? 60 : 40)  // Optimized space for single-row X-axis labels on tablets
           },
           backgroundColor: 'black',
           series: {
