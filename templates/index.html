@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en">
-  <head>
+
+<head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover" />
     <title>Spot is a dog</title>
@@ -8,32 +9,48 @@
     <script src="https://cdn.jsdelivr.net/npm/htmx.org@1.9.12"></script>
     <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
     <script defer src="/static/js/main.js"></script>
-  </head>
-  <body data-app-version="{{ app_version }}" data-default-margin="{{ '%.3f' % (margin_cents or 0.0) }}">
+
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-178265F6W3"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag() { dataLayer.push(arguments); }
+        gtag('js', new Date());
+
+        gtag('config', 'G-178265F6W3');
+    </script>
+
+</head>
+
+<body data-app-version="{{ app_version }}" data-default-margin="{{ '%.3f' % (margin_cents or 0.0) }}">
     <header class="app-header">
-      <h1>Spot is a dog</h1>
+        <h1>Spot is a dog</h1>
     </header>
 
     <main class="charts">
-      <section id="todayChart" hx-get="/partials/prices?date=today&amp;margin={{ '%.3f' % (margin_cents or 0.0) }}" hx-trigger="load from:body" hx-swap="outerHTML">
-        <div class="chart-head">Today</div>
-        <div class="chart-body">
-          <div class="chart-placeholder"></div>
-        </div>
-      </section>
-      <section id="tomorrowChart" hx-get="/partials/prices?date=tomorrow&amp;margin={{ '%.3f' % (margin_cents or 0.0) }}" hx-trigger="load from:body" hx-swap="outerHTML">
-        <div class="chart-head">Tomorrow</div>
-        <div class="chart-body">
-          <div class="chart-placeholder"></div>
-        </div>
-      </section>
+        <section id="todayChart" hx-get="/partials/prices?date=today&amp;margin={{ '%.3f' % (margin_cents or 0.0) }}"
+            hx-trigger="load from:body" hx-swap="outerHTML">
+            <div class="chart-head">Today</div>
+            <div class="chart-body">
+                <div class="chart-placeholder"></div>
+            </div>
+        </section>
+        <section id="tomorrowChart"
+            hx-get="/partials/prices?date=tomorrow&amp;margin={{ '%.3f' % (margin_cents or 0.0) }}"
+            hx-trigger="load from:body" hx-swap="outerHTML">
+            <div class="chart-head">Tomorrow</div>
+            <div class="chart-body">
+                <div class="chart-placeholder"></div>
+            </div>
+        </section>
 
     </main>
 
     <div id="toast" class="toast hidden">
-      <span>New version available</span>
-      <button id="reloadNow">Reload now</button>
-      <span id="countdown"></span>
+        <span>New version available</span>
+        <button id="reloadNow">Reload now</button>
+        <span id="countdown"></span>
     </div>
-  </body>
+</body>
+
 </html>
