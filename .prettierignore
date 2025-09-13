@@ -1,0 +1,15 @@
+# Ignore files that contain Jinja2 templates to prevent formatting issues
+templates/**/*.html
+
+# Other ignores
+*.min.js
+*.min.css
+node_modules/
+.git/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/

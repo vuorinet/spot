@@ -1,0 +1,28 @@
+{
+    "printWidth": 88,
+    "tabWidth": 4,
+    "useTabs": false,
+    "semi": true,
+    "singleQuote": true,
+    "quoteProps": "as-needed",
+    "trailingComma": "es5",
+    "bracketSpacing": true,
+    "bracketSameLine": false,
+    "arrowParens": "avoid",
+    "endOfLine": "lf",
+    "overrides": [
+        {
+            "files": [
+                "*.html",
+                "*.jinja",
+                "*.jinja2",
+                "*.j2"
+            ],
+            "options": {
+                "parser": "html",
+                "htmlWhitespaceSensitivity": "ignore",
+                "bracketSameLine": true
+            }
+        }
+    ]
+}
