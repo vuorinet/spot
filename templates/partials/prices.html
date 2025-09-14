@@ -27,9 +27,27 @@
             return;
         }
 
-        // Check if we already have cached data and chart instance for this element
+                // Check if we already have cached data and chart instance for this element
         if (chartElement._chartInstance && chartElement._chartData && chartElement._originalPriceRange) {
             console.log('Redrawing existing chart for {{ chart_date }} without fetching new data');
+
+            // Clean up existing timers and handlers before redraw
+            if (chartElement._nowLineTimer) {
+                clearInterval(chartElement._nowLineTimer);
+                clearTimeout(chartElement._nowLineTimer);
+            }
+            if (chartElement._visibilityHandler) {
+                document.removeEventListener('visibilitychange', chartElement._visibilityHandler);
+            }
+            if (chartElement._focusHandler) {
+                window.removeEventListener('focus', chartElement._focusHandler);
+            }
+            if (chartElement._pageShowHandler) {
+                window.removeEventListener('pageshow', chartElement._pageShowHandler);
+            }
+            if (chartElement._pageHideHandler) {
+                window.removeEventListener('pagehide', chartElement._pageHideHandler);
+            }
 
             // Recalculate responsive options since viewport may have changed
             const isMobile = window.innerWidth <= 900;
@@ -151,6 +169,8 @@
                 // Add now line for today's chart
                 if (date === 'today' && chartElement._validData) {
                     addNowLine(chartElement._chartInstance, chartElement, chartElement._validData);
+                    // Restart the timer after redraw
+                    startNowLineTimer(chartElement._chartInstance, chartElement, chartElement._validData);
                 }
 
                 // Overlay 0–23 labels on quarter-hour redraw
@@ -634,25 +654,107 @@
         }
 
         function startNowLineTimer(chart, chartElement, validData) {
-            // Update the now line every minute
-            const timer = setInterval(() => {
-                updateNowLine(chart, chartElement, validData);
-            }, 60000); // 60 seconds
+            // Clear any existing timer
+            if (chartElement._nowLineTimer) {
+                clearInterval(chartElement._nowLineTimer);
+            }
 
-            // Store timer reference for cleanup
-            chartElement._nowLineTimer = timer;
+            // Function to calculate milliseconds until next 15-minute boundary
+            function msUntilNext15MinBoundary() {
+                const now = new Date();
+                const currentMinutes = now.getMinutes();
+                const currentSeconds = now.getSeconds();
+                const currentMs = now.getMilliseconds();
+                
+                // Find next 15-minute boundary (0, 15, 30, 45)
+                const nextBoundary = Math.ceil(currentMinutes / 15) * 15;
+                const nextBoundaryMinutes = nextBoundary === 60 ? 0 : nextBoundary;
+                
+                // Calculate milliseconds until that boundary
+                const minutesUntilBoundary = nextBoundaryMinutes === 0 ? 
+                    (60 - currentMinutes) : (nextBoundaryMinutes - currentMinutes);
+                const msUntilBoundary = (minutesUntilBoundary * 60 * 1000) - (currentSeconds * 1000) - currentMs;
+                
+                return msUntilBoundary;
+            }
+
+            // Function to set up the next timer
+            function scheduleNextUpdate() {
+                const msUntilBoundary = msUntilNext15MinBoundary();
+                console.log(`Scheduling next now line update in ${Math.round(msUntilBoundary/1000)} seconds`);
+                
+                chartElement._nowLineTimer = setTimeout(() => {
+                    updateNowLine(chart, chartElement, validData);
+                    // Schedule the next update for 15 minutes later
+                    chartElement._nowLineTimer = setInterval(() => {
+                        updateNowLine(chart, chartElement, validData);
+                    }, 15 * 60 * 1000); // 15 minutes
+                }, msUntilBoundary);
+            }
+
+            // Start the precision timing
+            scheduleNextUpdate();
 
             // Add visibility change listener to update now line when tab becomes visible
             const visibilityHandler = () => {
                 if (!document.hidden) {
                     console.log('Tab became visible - updating now line immediately');
                     updateNowLine(chart, chartElement, validData);
+                    
+                    // Reschedule timer to maintain precision after visibility change
+                    if (chartElement._nowLineTimer) {
+                        clearInterval(chartElement._nowLineTimer);
+                        clearTimeout(chartElement._nowLineTimer);
+                    }
+                    scheduleNextUpdate();
                 }
             };
 
             // Store handler reference for cleanup
             chartElement._visibilityHandler = visibilityHandler;
             document.addEventListener('visibilitychange', visibilityHandler);
+
+            // Add focus/blur listeners for additional reliability on mobile
+            const focusHandler = () => {
+                console.log('Window gained focus - updating now line immediately');
+                updateNowLine(chart, chartElement, validData);
+                
+                // Reschedule timer to maintain precision after focus change
+                if (chartElement._nowLineTimer) {
+                    clearInterval(chartElement._nowLineTimer);
+                    clearTimeout(chartElement._nowLineTimer);
+                }
+                scheduleNextUpdate();
+            };
+
+            chartElement._focusHandler = focusHandler;
+            window.addEventListener('focus', focusHandler);
+
+            // Add page show event for better mobile reliability (iOS Safari, Android Chrome)
+            const pageShowHandler = (event) => {
+                // Only trigger if coming from cache (persisted = true) or after being hidden
+                if (event.persisted || document.wasHidden) {
+                    console.log('Page shown from cache or after being hidden - updating now line');
+                    updateNowLine(chart, chartElement, validData);
+                    
+                    // Reschedule timer for precision
+                    if (chartElement._nowLineTimer) {
+                        clearInterval(chartElement._nowLineTimer);
+                        clearTimeout(chartElement._nowLineTimer);
+                    }
+                    scheduleNextUpdate();
+                }
+                document.wasHidden = false;
+            };
+
+            const pageHideHandler = () => {
+                document.wasHidden = true;
+            };
+
+            chartElement._pageShowHandler = pageShowHandler;
+            chartElement._pageHideHandler = pageHideHandler;
+            window.addEventListener('pageshow', pageShowHandler);
+            window.addEventListener('pagehide', pageHideHandler);
         }
 
         function updateNowLine(chart, chartElement, validData) {
@@ -824,11 +926,14 @@
                 // Check if we have granularity info to determine time format
                 const granularity = chartElement._granularity || 'hour';
                 if (granularity === 'quarter_hour') {
-                    // For 15-minute data, find the closest 15-minute interval using sequential index
+                    // For 15-minute data, find the current 15-minute interval
+                    // The line should be positioned at the beginning of the current interval
                     const quarter = Math.floor(currentMinutes / 15);
                     const intervalIndex = currentHour * 4 + quarter;
                     currentTimeStr = intervalIndex.toString();
                     dataPointIndex = validData.findIndex(row => row[0] === currentTimeStr);
+                    
+                    console.log(`Current time: ${currentHour}:${currentMinutes.toString().padStart(2, '0')}, interval: ${intervalIndex}, quarter: ${quarter}`);
                 } else {
                     // For hourly data, use hour only
                     currentTimeStr = currentHour.toString();
@@ -864,10 +969,10 @@
                     // Calculate position based on time, accounting for the data structure
                     let approximateIndex;
                     if (granularity === 'quarter_hour') {
-                        // For 15-minute data, calculate approximate index in the 96-item array
+                        // For 15-minute data, position at the beginning of the current interval
+                        // No sub-interval positioning - line stays at interval start
                         const quarter = Math.floor(currentMinutes / 15);
-                        const minuteProgress = (currentMinutes % 15) / 15;
-                        approximateIndex = (currentHour * 4) + quarter + minuteProgress;
+                        approximateIndex = (currentHour * 4) + quarter;
                     } else {
                         // For hourly data, calculate approximate index in the 24-item array
                         const minuteProgress = currentMinutes / 60;

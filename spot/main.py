@@ -555,6 +555,7 @@ def create_app() -> FastAPI:
             tomorrow_date = today_date + timedelta(days=1)
 
             # Use cache data directly - cache should already be populated by ensure_cache_now()
+            dp = None
             if target == today_date and cache.today:
                 logger.debug(f"Using today's cache for {target}")
                 dp = cache.today
@@ -566,7 +567,11 @@ def create_app() -> FastAPI:
                 logger.warning(
                     f"Cache miss for {target}, fetching directly from ENTSO-E",
                 )
-                dp = await fetch_prices_for_day(target)
+                try:
+                    dp = await fetch_prices_for_day(target)
+                except Exception as e:
+                    logger.error(f"Failed to fetch data for {target}: {e}")
+                    dp = None
 
             LOW_PRICE = 5.0  # cents/kWh
             HIGH_PRICE = 15.0  # cents/kWh
@@ -574,50 +579,51 @@ def create_app() -> FastAPI:
             chart_data = []
 
             # Process all intervals and filter by target date in Helsinki timezone
-            for it in dp.intervals:
-                # Convert to Helsinki timezone
-                start_helsinki = it.start_utc.astimezone(HELSINKI_TZ)
-                interval_date = start_helsinki.date()
+            if dp and dp.intervals:
+                for it in dp.intervals:
+                    # Convert to Helsinki timezone
+                    start_helsinki = it.start_utc.astimezone(HELSINKI_TZ)
+                    interval_date = start_helsinki.date()
 
-                # Skip intervals that don't match the target date
-                if interval_date != target:
-                    continue
+                    # Skip intervals that don't match the target date
+                    if interval_date != target:
+                        continue
 
-                # Convert EUR/MWh to cents/kWh (with VAT already included)
-                spot_cents_with_vat = eur_mwh_to_cents_kwh(it.price_eur_per_mwh)
+                    # Convert EUR/MWh to cents/kWh (with VAT already included)
+                    spot_cents_with_vat = eur_mwh_to_cents_kwh(it.price_eur_per_mwh)
 
-                # Split electricity price into low/medium/high buckets like Angular component
-                low_electricity = (
-                    spot_cents_with_vat if spot_cents_with_vat < LOW_PRICE else 0
-                )
-                medium_electricity = (
-                    spot_cents_with_vat
-                    if LOW_PRICE <= spot_cents_with_vat < HIGH_PRICE
-                    else 0
-                )
-                high_electricity = (
-                    spot_cents_with_vat if spot_cents_with_vat >= HIGH_PRICE else 0
-                )
+                    # Split electricity price into low/medium/high buckets like Angular component
+                    low_electricity = (
+                        spot_cents_with_vat if spot_cents_with_vat < LOW_PRICE else 0
+                    )
+                    medium_electricity = (
+                        spot_cents_with_vat
+                        if LOW_PRICE <= spot_cents_with_vat < HIGH_PRICE
+                        else 0
+                    )
+                    high_electricity = (
+                        spot_cents_with_vat if spot_cents_with_vat >= HIGH_PRICE else 0
+                    )
 
-                # Create time label based on granularity
-                if dp.granularity == "quarter_hour":
-                    # For 15-minute intervals, use sequential integer indices
-                    # This prevents Google Charts from generating intermediate ticks
-                    quarter = start_helsinki.minute // 15
-                    time_label = str(start_helsinki.hour * 4 + quarter)
-                else:
-                    # For hourly intervals, use hour only
-                    time_label = str(start_helsinki.hour)
+                    # Create time label based on granularity
+                    if dp.granularity == "quarter_hour":
+                        # For 15-minute intervals, use sequential integer indices
+                        # This prevents Google Charts from generating intermediate ticks
+                        quarter = start_helsinki.minute // 15
+                        time_label = str(start_helsinki.hour * 4 + quarter)
+                    else:
+                        # For hourly intervals, use hour only
+                        time_label = str(start_helsinki.hour)
 
-                chart_data.append(
-                    [
-                        time_label,
-                        low_electricity,
-                        medium_electricity,
-                        high_electricity,
-                        margin_cents,
-                    ],
-                )
+                    chart_data.append(
+                        [
+                            time_label,
+                            low_electricity,
+                            medium_electricity,
+                            high_electricity,
+                            margin_cents,
+                        ],
+                    )
 
             # Sort chart data by time to ensure proper order
             # Both hourly and 15-minute data now use integer indices, so sort numerically
@@ -625,9 +631,11 @@ def create_app() -> FastAPI:
 
             # Ensure all intervals are represented for consistent chart layout
             complete_chart_data = []
+            actual_granularity = "hour"  # Default fallback
 
-            if dp.granularity == "quarter_hour":
+            if dp and dp.granularity == "quarter_hour":
                 # For 15-minute data, create complete 96-interval chart
+                actual_granularity = "quarter_hour"
                 chart_data_dict = {row[0]: row for row in chart_data}
 
                 for i in range(96):
@@ -641,8 +649,11 @@ def create_app() -> FastAPI:
                             [time_key, 0, 0, 0, margin_cents],
                         )
             else:
-                # For hourly data, create complete 24-hour chart
-                chart_data_dict = {int(row[0]): row for row in chart_data}
+                # For hourly data or when no data available, create complete 24-hour chart
+                actual_granularity = "hour"
+                chart_data_dict = (
+                    {int(row[0]): row for row in chart_data} if chart_data else {}
+                )
 
                 for hour in range(24):
                     hour_str = str(hour)
@@ -662,7 +673,7 @@ def create_app() -> FastAPI:
                         "maxPrice": global_max_price,
                         "minPrice": global_min_price,
                         "dateString": target.strftime("%A %m/%d/%Y"),
-                        "granularity": "hour",  # Default to hourly when no data
+                        "granularity": actual_granularity,  # Use the determined granularity
                         "intervalCount": len(complete_chart_data),
                         "error": "No price data available for this date",
                     },
@@ -674,7 +685,7 @@ def create_app() -> FastAPI:
                     "maxPrice": global_max_price,
                     "minPrice": global_min_price,
                     "dateString": target.strftime("%A %m/%d/%Y"),
-                    "granularity": dp.granularity,
+                    "granularity": actual_granularity,
                     "intervalCount": len(complete_chart_data),
                 },
             )
