@@ -833,16 +833,17 @@
                     lineX = chartArea.left + gapPerColumn + (approximateIndex * (columnWidth + gapPerColumn));
                 }
 
-                // Create yellow line
+                // Create yellow line (thin and dotted for 15-minute bars)
                 const nowLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
                 nowLine.setAttribute('class', 'now-line');
                 nowLine.setAttribute('x1', lineX.toString());
                 nowLine.setAttribute('y1', chartArea.top.toString());
                 nowLine.setAttribute('x2', lineX.toString());
                 nowLine.setAttribute('y2', (chartArea.top + chartArea.height).toString());
-                nowLine.setAttribute('stroke', '#ffcc00');
-                nowLine.setAttribute('stroke-width', '4');
-                nowLine.setAttribute('opacity', '0.8');
+                nowLine.setAttribute('stroke', '#ff9900');
+                nowLine.setAttribute('stroke-width', '3');
+                nowLine.setAttribute('stroke-dasharray', '4,3');
+                nowLine.setAttribute('opacity', '0.9');
 
                 svgElement.appendChild(nowLine);
 
