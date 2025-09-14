@@ -889,9 +889,9 @@
                 const nowLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
                 nowLine.setAttribute('class', 'now-line');
                 nowLine.setAttribute('x1', lineX.toString());
-                nowLine.setAttribute('y1', chartArea.top.toString());
+                nowLine.setAttribute('y1', '0'); // Start from very top of SVG
                 nowLine.setAttribute('x2', lineX.toString());
-                nowLine.setAttribute('y2', (chartArea.top + chartArea.height).toString());
+                nowLine.setAttribute('y2', svgElement.getAttribute('height') || '100%'); // Extend to very bottom of SVG
                 nowLine.setAttribute('stroke', '#ff9900');
                 nowLine.setAttribute('stroke-width', '3');
                 nowLine.setAttribute('stroke-dasharray', '4,3');
