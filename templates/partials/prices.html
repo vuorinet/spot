@@ -40,7 +40,7 @@
                     title: '',
                     textStyle: {
                         fontSize: isMobile ? 10 : 12,
-                        color: 'white'
+                        color: (chartElement._granularity === 'quarter_hour') ? 'black' : 'white'
                     },
                     titleTextStyle: {
                         color: 'white',
@@ -151,6 +151,58 @@
                 // Add now line for today's chart
                 if (date === 'today' && chartElement._validData) {
                     addNowLine(chartElement._chartInstance, chartElement, chartElement._validData);
+                }
+
+                // Overlay 0–23 labels on quarter-hour redraw
+                if ((chartElement._granularity || 'hour') === 'quarter_hour') {
+                    try {
+                        const svg = chartElement.querySelector('svg');
+                        if (svg && chartElement._chartInstance) {
+                            // Hide native X-axis labels (0–95)
+                            const textElements = svg.querySelectorAll('text');
+                            let maxY = -Infinity;
+                            const candidates = [];
+                            textElements.forEach(textElement => {
+                                const t = textElement.textContent.trim();
+                                if (/^\d+$/.test(t)) {
+                                    const val = parseInt(t);
+                                    if (val >= 0 && val <= 95) {
+                                        const rect = textElement.getBoundingClientRect();
+                                        const chartRect = chartElement.getBoundingClientRect();
+                                        const y = rect.top - chartRect.top;
+                                        maxY = Math.max(maxY, y);
+                                        candidates.push({ el: textElement, y });
+                                    }
+                                }
+                            });
+                            const xAxisCandidates = candidates.filter(c => Math.abs(c.y - maxY) < 10);
+                            xAxisCandidates.forEach(c => { c.el.style.display = 'none'; });
+
+                            // Remove previous overlay labels
+                            svg.querySelectorAll('.unified-hour-label').forEach(n => n.remove());
+
+                            // Position overlay labels using chart layout interface
+                            const cli = chartElement._chartInstance.getChartLayoutInterface();
+                            const area = cli.getChartAreaBoundingBox();
+                            const labelY = area.top + area.height + 12;
+                            for (let hour = 0; hour < 24; hour++) {
+                                const dataIndex = hour * 4; // leftmost of each hour
+                                const xPos = cli.getXLocation(dataIndex);
+                                const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                                lbl.textContent = hour.toString();
+                                lbl.setAttribute('x', xPos.toString());
+                                lbl.setAttribute('y', labelY.toString());
+                                lbl.setAttribute('text-anchor', 'middle');
+                                lbl.setAttribute('font-family', 'Arial, sans-serif');
+                                lbl.setAttribute('font-size', (isMobile ? '12' : '12'));
+                                lbl.setAttribute('fill', 'white');
+                                lbl.setAttribute('class', 'unified-hour-label');
+                                svg.appendChild(lbl);
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('Overlay labels on redraw failed:', e);
+                    }
                 }
             }, 100);
 
@@ -310,9 +362,10 @@
                         title: '',
                         hAxis: {
                             title: '',  // Remove axis title to save space
+                            format: 'none',
                             textStyle: {
                                 fontSize: isMobile ? 10 : 12,
-                                color: 'white'
+                                color: (data.granularity === 'quarter_hour') ? 'black' : 'white' // Hide native 0-95 on 15-min
                             },
                             titleTextStyle: {
                                 color: 'white',
@@ -322,7 +375,20 @@
                             gridlines: {
                                 count: 24  // Always use 24 gridlines
                             },
-                            // Let Google Charts generate automatic ticks, we'll fix them with post-processing
+                            // Custom ticks for 15-minute data to show only hours immediately
+                            ticks: (() => {
+                                const granularity = data.granularity || 'hour';
+                                if (granularity === 'quarter_hour') {
+                                    const ticks = [];
+                                    for (let hour = 0; hour < 24; hour++) {
+                                        const position = hour * 4;
+                                        ticks.push({ v: position.toString(), f: hour.toString() });
+                                    }
+                                    return ticks;
+                                } else {
+                                    return undefined;
+                                }
+                            })(),
                             count: data.granularity === 'quarter_hour' ? undefined : 24,
                             maxAlternation: 1,
                             // Force single row display and optimize spacing
@@ -423,19 +489,17 @@
                             }
                         });
 
-                        // Add simple post-processing to fix X-axis labels
+                        // Add post-processing to overlay clean 0-23 labels for 15-minute data
                         if (data.granularity === 'quarter_hour') {
                             google.visualization.events.addListener(chart, 'ready', function() {
-                                // Add longer delay to ensure chart is fully rendered after orientation changes
                                 setTimeout(() => {
                                     try {
-                                        // Find X-axis labels specifically
                                         const svg = chartElement.querySelector('svg');
                                         if (svg) {
                                             const textElements = svg.querySelectorAll('text');
                                             const candidates = [];
-                                            
-                                            // Find potential X-axis labels
+
+                                            // Collect potential X-axis labels (0..95) positions
                                             textElements.forEach(textElement => {
                                                 const text = textElement.textContent.trim();
                                                 if (/^\d+$/.test(text)) {
@@ -452,164 +516,82 @@
                                                     }
                                                 }
                                             });
-                                            
-                                            // Find the bottom-most row (X-axis)
+
                                             if (candidates.length > 0) {
                                                 const maxY = Math.max(...candidates.map(c => c.y));
                                                 const xAxisCandidates = candidates.filter(c => Math.abs(c.y - maxY) < 10);
-                                                
-                                                // Sort by X position and redistribute to fill full width
-                                                xAxisCandidates.sort((a, b) => a.x - b.x);
-                                                
-                                                if (xAxisCandidates.length > 0) {
-                                                    const leftmostX = xAxisCandidates[0].x;
-                                                    const rightmostX = xAxisCandidates[xAxisCandidates.length - 1].x;
-                                                    const totalWidth = rightmostX - leftmostX;
-                                                    
-                                                    // Find actual bar positions and place labels under them
-                                                    const hourPositions = [];
-                                                    
-                                                    // Find all bar elements (rectangles) in the chart
-                                                    const bars = svg.querySelectorAll('rect');
-                                                    const barPositions = [];
-                                                    
-                                                    // Detect screen size for responsive bar filtering
-                                                    const isMobile = window.innerWidth <= 900;
-                                                    const isTablet = window.innerWidth > 900 && window.innerWidth <= 1200;
-                                                    const screenType = isMobile ? 'mobile' : (isTablet ? 'tablet' : 'desktop');
-                                                    
-                                                    console.log(`Screen: ${screenType} (${window.innerWidth}px), Total rect elements: ${bars.length}`);
-                                                    
-                                                    // Get positions of all bars with responsive filtering
-                                                    bars.forEach((bar, index) => {
-                                                        const x = parseFloat(bar.getAttribute('x') || 0);
-                                                        const width = parseFloat(bar.getAttribute('width') || 0);
-                                                        const height = parseFloat(bar.getAttribute('height') || 0);
-                                                        const fill = bar.getAttribute('fill') || '';
-                                                        
-                                                        if (index < 10) {
-                                                            console.log(`Rect ${index}: x=${x}, width=${width}, height=${height}, fill=${fill}`);
-                                                        }
-                                                        
-                                                        // Responsive filtering criteria based on screen size
-                                                        const maxBarWidth = isMobile ? 20 : (isTablet ? 30 : 50);
-                                                        const minBarX = isMobile ? 20 : (isTablet ? 30 : 50);
-                                                        
-                                                        // Filter for data bars: reasonable width, has color fill, reasonable position
-                                                        if (width > 0 && width < maxBarWidth && x >= minBarX && height > 0 && fill && fill !== '#ffffff' && fill !== '#000000') {
-                                                            barPositions.push({
-                                                                x: x,
-                                                                width: width,
-                                                                centerX: x + width / 2,
-                                                                height: height,
-                                                                fill: fill
-                                                            });
-                                                        }
-                                                    });
-                                                    
-                                                    // Sort bars by X position
-                                                    barPositions.sort((a, b) => a.x - b.x);
-                                                    
-                                                    // Remove duplicates (same x position)
-                                                    const uniqueBarPositions = [];
-                                                    let lastX = -1;
-                                                    barPositions.forEach(bar => {
-                                                        if (Math.abs(bar.x - lastX) > 0.1) { // Different position (tolerance for floating point)
-                                                            uniqueBarPositions.push(bar);
-                                                            lastX = bar.x;
-                                                        }
-                                                    });
-                                                    
-                                                    console.log(`${screenType} filtering: maxWidth=${isMobile ? 20 : (isTablet ? 30 : 50)}, minX=${isMobile ? 20 : (isTablet ? 30 : 50)}`);
-                                                    console.log(`Filtered to ${barPositions.length} valid bars, ${uniqueBarPositions.length} unique bars`);
-                                                    
-                                                    // Check if we have the expected number of bars (should be 96 for 15-minute data)
-                                                    if (uniqueBarPositions.length < 90) {
-                                                        console.warn(`Warning: Only found ${uniqueBarPositions.length} bars, expected ~96. Chart may still be rendering.`);
-                                                        // Could add a retry mechanism here if needed
+
+                                                // Hide native labels (already black, but ensure hidden)
+                                                xAxisCandidates.forEach(c => {
+                                                    c.element.style.display = 'none';
+                                                });
+
+                                                // Find bar rectangles to position labels
+                                                const bars = svg.querySelectorAll('rect');
+                                                const barPositions = [];
+                                                const isMobile = window.innerWidth <= 900;
+                                                const isTablet = window.innerWidth > 900 && window.innerWidth <= 1200;
+                                                const maxBarWidth = isMobile ? 20 : (isTablet ? 30 : 50);
+                                                const minBarX = isMobile ? 20 : (isTablet ? 30 : 50);
+
+                                                bars.forEach(bar => {
+                                                    const x = parseFloat(bar.getAttribute('x') || 0);
+                                                    const width = parseFloat(bar.getAttribute('width') || 0);
+                                                    const height = parseFloat(bar.getAttribute('height') || 0);
+                                                    const fill = bar.getAttribute('fill') || '';
+                                                    if (width > 0 && width < maxBarWidth && x >= minBarX && height > 0 && fill && fill !== '#ffffff' && fill !== '#000000') {
+                                                        barPositions.push({ x, width, centerX: x + width / 2, height, fill });
                                                     }
-                                                    
-                                                    console.log('First 12 unique bar details:', uniqueBarPositions.slice(0, 12).map((b, i) => 
-                                                        `${i}: x=${b.x.toFixed(1)}, center=${b.centerX.toFixed(1)}, w=${b.width.toFixed(1)}`
-                                                    ));
-                                                    
-                                                    // Position hour labels at the left edge of every 4th bar (1st, 5th, 9th, 13th, ...)
-                                                    for (let hour = 0; hour < 24; hour++) {
-                                                        const barIndex = hour * 4; // 0, 4, 8, 12, ...
-                                                        if (barIndex < uniqueBarPositions.length) {
-                                                            // Use the left X position of the bar instead of center
-                                                            hourPositions.push(uniqueBarPositions[barIndex].x);
-                                                        } else {
-                                                            // If we don't have enough bars, extrapolate using left positions
-                                                            const lastBarX = uniqueBarPositions[uniqueBarPositions.length - 1].x;
-                                                            const barSpacing = uniqueBarPositions.length > 1 ? 
-                                                                (uniqueBarPositions[uniqueBarPositions.length - 1].x - uniqueBarPositions[0].x) / (uniqueBarPositions.length - 1) : 20;
-                                                            const extrapolatedX = lastBarX + (barIndex - uniqueBarPositions.length + 1) * barSpacing;
-                                                            hourPositions.push(extrapolatedX);
-                                                            
-                                                            if (hour < 15) {
-                                                                console.log(`Hour ${hour}: extrapolated to x=${extrapolatedX.toFixed(1)} (barIndex=${barIndex}, lastBar=${lastBarX.toFixed(1)})`);
-                                                            }
-                                                        }
+                                                });
+
+                                                barPositions.sort((a, b) => a.x - b.x);
+                                                const uniqueBarPositions = [];
+                                                let lastX = -1;
+                                                barPositions.forEach(bar => {
+                                                    if (Math.abs(bar.x - lastX) > 0.1) {
+                                                        uniqueBarPositions.push(bar);
+                                                        lastX = bar.x;
                                                     }
-                                                    
-                                                    console.log(`Found ${xAxisCandidates.length} X-axis label candidates for ${screenType} layout`);
-                                                    console.log('Original positions:', xAxisCandidates.slice(0, 8).map((c, i) => `${i}: ${c.x.toFixed(1)}`));
-                                                    console.log('Target positions:', hourPositions.slice(0, 8).map((x, i) => `${i}: ${x.toFixed(1)}`));
-                                                    
-                                                    // Calculate baseline Y position once for all labels
-                                                    const availableCandidates = Math.min(xAxisCandidates.length, 24);
-                                                    const yPositions = xAxisCandidates.slice(0, availableCandidates).map(c => Math.round(c.y));
-                                                    const yFrequency = {};
-                                                    yPositions.forEach(y => yFrequency[y] = (yFrequency[y] || 0) + 1);
-                                                    const baselineY = parseInt(Object.keys(yFrequency).reduce((a, b) => yFrequency[a] > yFrequency[b] ? a : b));
-                                                    
-                                                    // UNIFIED APPROACH: Replace all existing labels with new ones using consistent positioning
-                                                    console.log('Replacing all existing labels with unified positioning approach');
-                                                    
-                                                    // Hide all existing labels
-                                                    xAxisCandidates.forEach((candidate) => {
-                                                        candidate.element.style.display = 'none';
-                                                    });
-                                                    
-                                                    // Calculate consistent Y position for all labels
-                                                    let labelY = baselineY;
-                                                    if (xAxisCandidates.length > 1) {
-                                                        // Use a well-positioned existing label as reference and add offset for proper positioning
-                                                        const referenceLabel = xAxisCandidates[1]; // Label "1" 
-                                                        labelY = referenceLabel.y + 15; // Consistent offset for all labels
+                                                });
+
+                                                // Compute label Y baseline
+                                                let labelY = Math.round(maxY) + 15;
+                                                if (xAxisCandidates.length > 1) {
+                                                    const reference = xAxisCandidates[1];
+                                                    labelY = reference.y + 15;
+                                                }
+
+                                                // Create 24 hour labels positioned at left edge of every 4th bar
+                                                for (let hour = 0; hour < 24; hour++) {
+                                                    const barIndex = hour * 4;
+                                                    let xPos;
+                                                    if (barIndex < uniqueBarPositions.length) {
+                                                        xPos = uniqueBarPositions[barIndex].x;
+                                                    } else if (uniqueBarPositions.length > 1) {
+                                                        const lastBarX = uniqueBarPositions[uniqueBarPositions.length - 1].x;
+                                                        const spacing = (uniqueBarPositions[uniqueBarPositions.length - 1].x - uniqueBarPositions[0].x) / (uniqueBarPositions.length - 1);
+                                                        xPos = lastBarX + (barIndex - uniqueBarPositions.length + 1) * spacing;
+                                                    } else {
+                                                        xPos = 20 + hour * 30; // fallback
                                                     }
-                                                    
-                                                    // Create ALL 24 labels using the same unified method
-                                                    for (let hour = 0; hour < 24; hour++) {
-                                                        const newLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-                                                        newLabel.textContent = hour.toString();
-                                                        
-                                                        // Unified positioning: all labels use the same method
-                                                        newLabel.setAttribute('x', hourPositions[hour].toString());
-                                                        newLabel.setAttribute('y', labelY.toString());
-                                                        newLabel.setAttribute('text-anchor', 'start'); // Left-align with bar's left edge
-                                                        newLabel.setAttribute('font-family', 'Arial, sans-serif');
-                                                        newLabel.setAttribute('font-size', isMobile ? '12' : '12');
-                                                        newLabel.setAttribute('fill', 'white'); // Match Y-axis label color
-                                                        newLabel.setAttribute('class', 'unified-hour-label');
-                                                        
-                                                        // Add to SVG
-                                                        svg.appendChild(newLabel);
-                                                        
-                                                        if (hour < 8) {
-                                                            console.log(`Unified label ${hour}: x=${hourPositions[hour].toFixed(1)}, y=${labelY.toFixed(1)} (under bar ${hour * 4})`);
-                                                        }
-                                                    }
-                                                    
-                                                    console.log(`Repositioned 24 hour labels across full width (${totalWidth}px) with integer offsets`);
+
+                                                    const newLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                                                    newLabel.textContent = hour.toString();
+                                                    newLabel.setAttribute('x', xPos.toString());
+                                                    newLabel.setAttribute('y', labelY.toString());
+                                                    newLabel.setAttribute('text-anchor', 'start');
+                                                    newLabel.setAttribute('font-family', 'Arial, sans-serif');
+                                                    newLabel.setAttribute('font-size', (isMobile ? '12' : '12'));
+                                                    newLabel.setAttribute('fill', 'white');
+                                                    newLabel.setAttribute('class', 'unified-hour-label');
+                                                    svg.appendChild(newLabel);
                                                 }
                                             }
                                         }
                                     } catch (error) {
-                                        console.error('Error fixing labels:', error);
+                                        console.error('Error creating hour labels:', error);
                                     }
-                                }, 300); // Increased delay for orientation changes
+                                }, 0);
                             });
                         }
 
