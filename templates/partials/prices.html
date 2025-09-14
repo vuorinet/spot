@@ -170,12 +170,25 @@
                                         const rect = textElement.getBoundingClientRect();
                                         const chartRect = chartElement.getBoundingClientRect();
                                         const y = rect.top - chartRect.top;
+                                        const x = rect.left - chartRect.left;
                                         maxY = Math.max(maxY, y);
-                                        candidates.push({ el: textElement, y });
+                                        candidates.push({ el: textElement, y, x });
                                     }
                                 }
                             });
-                            const xAxisCandidates = candidates.filter(c => Math.abs(c.y - maxY) < 10);
+                            // Use chart layout to require labels be to the right of plot area
+                            let xAxisCandidates;
+                            try {
+                                const cli2 = chartElement._chartInstance.getChartLayoutInterface();
+                                const area2 = cli2 && cli2.getChartAreaBoundingBox ? cli2.getChartAreaBoundingBox() : null;
+                                if (area2) {
+                                    xAxisCandidates = candidates.filter(c => Math.abs(c.y - maxY) < 10 && c.x > area2.left + 10);
+                                } else {
+                                    xAxisCandidates = candidates.filter(c => Math.abs(c.y - maxY) < 10);
+                                }
+                            } catch (e) {
+                                xAxisCandidates = candidates.filter(c => Math.abs(c.y - maxY) < 10);
+                            }
                             xAxisCandidates.forEach(c => { c.el.style.display = 'none'; });
 
                             // Remove previous overlay labels
@@ -519,7 +532,19 @@
 
                                             if (candidates.length > 0) {
                                                 const maxY = Math.max(...candidates.map(c => c.y));
-                                                const xAxisCandidates = candidates.filter(c => Math.abs(c.y - maxY) < 10);
+                                                // Use chart layout to determine left boundary of plot area
+                                                let xAxisCandidates;
+                                                try {
+                                                    const cli2 = chartElement._chartInstance.getChartLayoutInterface();
+                                                    const area2 = cli2 && cli2.getChartAreaBoundingBox ? cli2.getChartAreaBoundingBox() : null;
+                                                    if (area2) {
+                                                        xAxisCandidates = candidates.filter(c => Math.abs(c.y - maxY) < 10 && c.x > area2.left + 10);
+                                                    } else {
+                                                        xAxisCandidates = candidates.filter(c => Math.abs(c.y - maxY) < 10);
+                                                    }
+                                                } catch (e) {
+                                                    xAxisCandidates = candidates.filter(c => Math.abs(c.y - maxY) < 10);
+                                                }
 
                                                 // Hide native labels (already black, but ensure hidden)
                                                 xAxisCandidates.forEach(c => {
