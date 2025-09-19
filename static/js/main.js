@@ -178,6 +178,10 @@
     // Track when we last checked for activity (to detect sleep/wake cycles)
     let lastActivityCheck = Date.now();
 
+    // Add debouncing for refresh operations to prevent multiple simultaneous refreshes
+    let refreshDebounceTimeout = null;
+    let isRefreshInProgress = false;
+
     // Track when chart data was last fetched and key metadata
     window.chartDataTimestamps = {
         today: null,
@@ -221,15 +225,26 @@
         const timeSinceLastCheck = now - lastActivityCheck;
         lastActivityCheck = now;
 
-        // If more than 10 minutes passed since last check, likely woke from sleep
-        const SLEEP_THRESHOLD = 10 * 60 * 1000; // 10 minutes
-        if (timeSinceLastCheck > SLEEP_THRESHOLD) {
+        // Different thresholds for different scenarios
+        const SHORT_SLEEP = 10 * 60 * 1000;  // 10 minutes - quick screen lock
+        const MEDIUM_SLEEP = 30 * 60 * 1000; // 30 minutes - longer absence
+        const LONG_SLEEP = 2 * 60 * 60 * 1000; // 2 hours - significant absence
+
+        if (timeSinceLastCheck > LONG_SLEEP) {
             console.log(
-                `Potential wake from sleep detected: ${Math.round(
-                    timeSinceLastCheck / 1000 / 60
-                )} minutes inactive`
+                `Long sleep detected: ${Math.round(timeSinceLastCheck / 1000 / 60)} minutes inactive - data likely stale`
             );
-            return true;
+            return { type: 'long', minutes: Math.round(timeSinceLastCheck / 1000 / 60) };
+        } else if (timeSinceLastCheck > MEDIUM_SLEEP) {
+            console.log(
+                `Medium sleep detected: ${Math.round(timeSinceLastCheck / 1000 / 60)} minutes inactive - might need refresh`
+            );
+            return { type: 'medium', minutes: Math.round(timeSinceLastCheck / 1000 / 60) };
+        } else if (timeSinceLastCheck > SHORT_SLEEP) {
+            console.log(
+                `Short sleep detected: ${Math.round(timeSinceLastCheck / 1000 / 60)} minutes inactive - probably just screen lock`
+            );
+            return { type: 'short', minutes: Math.round(timeSinceLastCheck / 1000 / 60) };
         }
         return false;
     };
@@ -315,28 +330,7 @@
 
     // Listen for window focus and visibility changes
     window.addEventListener('focus', () => {
-        console.log(
-            'Window focused - checking for sleep/wake, date change, and stale data'
-        );
-
-        // Check if we likely woke from sleep
-        const wokeFromSleep = window.checkWakeFromSleep();
-
-        // Check for date change first (most important)
-        const dateChanged = window.checkDateChange();
-
-        if (!dateChanged) {
-            // If date didn't change, check if data is stale or we woke from sleep
-            const hasStaleData = window.checkStaleData();
-
-            if (wokeFromSleep || hasStaleData) {
-                console.log('Refreshing charts due to wake from sleep or stale data');
-                window.refreshCharts();
-            } else {
-                // Only update yellow line if no refresh is needed
-                window.updateNowLineImmediately();
-            }
-        }
+        window.handleVisibilityChange('window-focus');
     });
 
     // Note: We don't hide on blur because the window might still be visible
@@ -344,30 +338,7 @@
 
     document.addEventListener('visibilitychange', () => {
         if (!document.hidden) {
-            console.log(
-                'Document became visible - checking for sleep/wake, date change, and stale data'
-            );
-
-            // Check if we likely woke from sleep
-            const wokeFromSleep = window.checkWakeFromSleep();
-
-            // Check for date change first (most important)
-            const dateChanged = window.checkDateChange();
-
-            if (!dateChanged) {
-                // If date didn't change, check if data is stale or we woke from sleep
-                const hasStaleData = window.checkStaleData();
-
-                if (wokeFromSleep || hasStaleData) {
-                    console.log(
-                        'Refreshing charts due to wake from sleep or stale data'
-                    );
-                    window.refreshCharts();
-                } else {
-                    // Only update yellow line if no refresh is needed
-                    window.updateNowLineImmediately();
-                }
-            }
+            window.handleVisibilityChange('document-visibility');
         } else {
             console.log('Document became hidden - hiding yellow line');
             window.hideNowLine();
@@ -383,30 +354,9 @@
             if (document.hidden) {
                 wasHidden = true;
             } else if (wasHidden) {
-                console.log(
-                    'Screen likely re-enabled - checking for sleep/wake, date change, and stale data'
-                );
+                console.log('Screen likely re-enabled - using smart visibility handler');
                 setTimeout(() => {
-                    // Check if we likely woke from sleep
-                    const wokeFromSleep = window.checkWakeFromSleep();
-
-                    // Check for date change first (most important)
-                    const dateChanged = window.checkDateChange();
-
-                    if (!dateChanged) {
-                        // If date didn't change, check if data is stale or we woke from sleep
-                        const hasStaleData = window.checkStaleData();
-
-                        if (wokeFromSleep || hasStaleData) {
-                            console.log(
-                                'Refreshing charts due to wake from sleep or stale data'
-                            );
-                            window.refreshCharts();
-                        } else {
-                            // Only update yellow line if no refresh is needed
-                            window.updateNowLineImmediately();
-                        }
-                    }
+                    window.handleVisibilityChange('wake-lock-visibility');
                 }, 100); // Small delay to ensure everything is ready
                 wasHidden = false;
             }
@@ -471,6 +421,7 @@
             window.refreshCharts();
         }
     });
+
 
     // Handle orientation changes only on mobile devices
     let currentOrientation = screen.orientation
@@ -562,8 +513,87 @@
         }
     };
 
+    // Smart refresh function that handles visibility/focus events intelligently
+    window.handleVisibilityChange = function(eventSource = 'unknown') {
+        console.log(`Handle visibility change from: ${eventSource}`);
+
+        // Clear any pending debounced refresh
+        if (refreshDebounceTimeout) {
+            clearTimeout(refreshDebounceTimeout);
+            refreshDebounceTimeout = null;
+        }
+
+        // If a refresh is already in progress, just update the yellow line
+        if (isRefreshInProgress) {
+            console.log('Refresh in progress - only updating yellow line');
+            window.updateNowLineImmediately();
+            return;
+        }
+
+        // Debounce multiple rapid events (common during Android unlock)
+        refreshDebounceTimeout = setTimeout(() => {
+            console.log('Processing visibility change after debounce...');
+
+            // Check if we likely woke from sleep (now returns detailed info)
+            const sleepInfo = window.checkWakeFromSleep();
+
+            // Check for date change first (most important)
+            const dateChanged = window.checkDateChange();
+
+            if (dateChanged) {
+                // Date changed - must refresh
+                return; // checkDateChange already called refreshCharts
+            }
+
+            // Check if data is actually stale
+            const hasStaleData = window.checkStaleData();
+
+            // Smart refresh logic based on sleep duration and data staleness
+            if (hasStaleData) {
+                console.log('Refreshing charts due to stale data');
+                window.refreshCharts();
+            } else if (sleepInfo) {
+                // Handle different sleep scenarios
+                if (sleepInfo.type === 'long') {
+                    // Long sleep (2+ hours) - always refresh as precaution
+                    console.log('Long sleep detected - refreshing charts as precaution');
+                    window.refreshCharts();
+                } else if (sleepInfo.type === 'medium') {
+                    // Medium sleep (30min-2h) - only refresh if it's during key hours when data might have updated
+                    const hour = new Date().getHours();
+                    const isKeyHour = (hour >= 6 && hour <= 10) || (hour >= 14 && hour <= 18);
+
+                    if (isKeyHour) {
+                        console.log('Medium sleep during key hours - refreshing charts');
+                        window.refreshCharts();
+                    } else {
+                        console.log('Medium sleep but not key hours - only updating yellow line');
+                        window.updateNowLineImmediately();
+                    }
+                } else {
+                    // Short sleep (10-30min) - just quick screen lock, only update yellow line
+                    console.log('Short sleep (screen lock) - only updating yellow line');
+                    window.updateNowLineImmediately();
+                }
+            } else {
+                // No sleep detected, just update yellow line position
+                console.log('No sleep detected - only updating yellow line');
+                window.updateNowLineImmediately();
+            }
+
+            refreshDebounceTimeout = null;
+        }, 150); // 150ms debounce to handle rapid multiple events
+    };
+
     // Global function to refresh charts (fetch new data from server)
     window.refreshCharts = function () {
+        // Prevent multiple simultaneous refreshes
+        if (isRefreshInProgress) {
+            console.log('Refresh already in progress - skipping duplicate request');
+            return;
+        }
+
+        isRefreshInProgress = true;
         console.log('Refreshing charts with new data from server...');
 
         // Show a brief visual indicator that data is being refreshed
@@ -674,5 +704,11 @@
         } catch (error) {
             console.error('Error refreshing charts:', error);
         }
+
+        // Reset refresh flag after HTMX requests complete (with timeout fallback)
+        setTimeout(() => {
+            isRefreshInProgress = false;
+            console.log('Chart refresh completed');
+        }, 2000); // 2 second timeout to ensure flag is reset
     };
 })();
