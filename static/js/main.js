@@ -497,19 +497,19 @@
         if (
             todayChartElement &&
             todayChartElement._chartInstance &&
-            window.createChart_today
+            window.createChart
         ) {
             console.log('Redrawing today chart with cached data');
-            window.createChart_today();
+            window.createChart('today');
         }
 
         if (
             tomorrowChartElement &&
             tomorrowChartElement._chartInstance &&
-            window.createChart_tomorrow
+            window.createChart
         ) {
             console.log('Redrawing tomorrow chart with cached data');
-            window.createChart_tomorrow();
+            window.createChart('tomorrow');
         }
     };
 

@@ -16,20 +16,22 @@
 
 <script>
     // Create chart for {{ chart_date }}
-    window.createChart_{{ chart_date }} = function() {
-        const date = '{{ chart_date }}';
-        const margin = '{{ request.query_params.get('margin', '0') }}';
-        const chartElement = document.getElementById('{{ chart_id }}');
-        const dateStringEl = document.getElementById('{{ date_string_id }}');
+    window.createChart = function (chartDate) {
+        const date = chartDate || '{{ chart_date }}';
+        const margin = '{{ request.query_params.get("margin", "0") }}';
+        const chartId = 'googleChart_' + date;
+        const dateStringId = 'dateString_' + date;
+        const chartElement = document.getElementById(chartId);
+        const dateStringEl = document.getElementById(dateStringId);
 
         if (!chartElement) {
-            console.error('Chart element not found:', '{{ chart_id }}');
+            console.error('Chart element not found:', chartId);
             return;
         }
 
         // Check if we already have cached data and chart instance for this element
         if (chartElement._chartInstance && chartElement._chartData && chartElement._originalPriceRange) {
-            console.log('Redrawing existing chart for {{ chart_date }} without fetching new data');
+            console.log('Redrawing existing chart for ' + date + ' without fetching new data');
 
             // Clean up existing timers and handlers before redraw
             if (chartElement._nowLineTimer) {
@@ -1027,5 +1029,5 @@
     };
 
     // Execute the chart creation function immediately
-    window.createChart_{{ chart_date }} ();
+    window.createChart('{{ chart_date }}');
 </script>
