@@ -210,6 +210,16 @@ def create_app() -> FastAPI:
         # Check if we need to rotate cache at midnight or clean up contaminated data
         cache_rotated = False
         if cache.today is not None:
+            # Debug: Check what dates are actually in today's cache
+            today_dates = set()
+            for it in cache.today.intervals:
+                interval_date = it.start_utc.astimezone(HELSINKI_TZ).date()
+                today_dates.add(interval_date)
+
+            logger.info(
+                f"Midnight rotation debug: today_d={today_d}, today cache contains dates: {sorted(today_dates)}",
+            )
+
             # Check if cached "today" data contains the right date
             today_intervals = [
                 it
@@ -217,7 +227,7 @@ def create_app() -> FastAPI:
                 if it.start_utc.astimezone(HELSINKI_TZ).date() == today_d
             ]
             total_intervals = len(cache.today.intervals)
-            logger.debug(
+            logger.info(
                 f"Today cache: {len(today_intervals)}/{total_intervals} intervals match {today_d}",
             )
 
@@ -225,13 +235,23 @@ def create_app() -> FastAPI:
             if len(today_intervals) == 0:
                 # No intervals for today - try to rotate from tomorrow
                 if cache.tomorrow is not None:
+                    # Debug: Check what dates are actually in tomorrow's cache
+                    tomorrow_dates = set()
+                    for it in cache.tomorrow.intervals:
+                        interval_date = it.start_utc.astimezone(HELSINKI_TZ).date()
+                        tomorrow_dates.add(interval_date)
+
+                    logger.info(
+                        f"Midnight rotation debug: today_d={today_d}, tomorrow cache contains dates: {sorted(tomorrow_dates)}",
+                    )
+
                     tomorrow_intervals = [
                         it
                         for it in cache.tomorrow.intervals
                         if it.start_utc.astimezone(HELSINKI_TZ).date() == today_d
                     ]
-                    logger.debug(
-                        f"Tomorrow intervals matching {today_d}: {len(tomorrow_intervals)}",
+                    logger.info(
+                        f"Tomorrow intervals matching {today_d}: {len(tomorrow_intervals)} out of {len(cache.tomorrow.intervals)} total",
                     )
                     if tomorrow_intervals:
                         logger.info(
@@ -288,8 +308,15 @@ def create_app() -> FastAPI:
                     len(cache.today.intervals),
                 )
                 await notify_cache_event("today_updated", {"date": today_d.isoformat()})
-            except DataNotAvailable:
-                logger.info("Today's prices not available yet; will retry")
+            except DataNotAvailable as e:
+                logger.warning(
+                    "Today's prices not available yet for %s: %s; will retry",
+                    today_d,
+                    e,
+                )
+                cache.today = None
+            except Exception as e:
+                logger.error("Failed to fetch today's prices for %s: %s", today_d, e)
                 cache.today = None
         else:
             logger.info(
@@ -536,13 +563,31 @@ def create_app() -> FastAPI:
                 )
 
             # Get all available data from cache first (cache should be warm from startup)
+            # But also check if cache contains stale data (e.g., after midnight)
+            cache_needs_refresh = False
             if cache.today is None:
                 logger.warning(
-                    "Cache not warm during chart data request, ensuring cache",
+                    "Cache not warm during chart data request, ensuring cache"
                 )
-                await ensure_cache_now()
+                cache_needs_refresh = True
             else:
-                logger.debug("Using warm cache for chart data")
+                # Check if today's cache contains data for the current date
+                today_date = now_hel.date()
+                today_intervals_for_current_date = [
+                    it
+                    for it in cache.today.intervals
+                    if it.start_utc.astimezone(HELSINKI_TZ).date() == today_date
+                ]
+                if len(today_intervals_for_current_date) == 0:
+                    logger.warning(
+                        f"Today's cache contains no data for current date {today_date}, ensuring cache",
+                    )
+                    cache_needs_refresh = True
+                else:
+                    logger.debug("Using warm cache for chart data")
+
+            if cache_needs_refresh:
+                await ensure_cache_now()
 
             # Calculate global price range for consistent scaling
             global_min_price, global_max_price = await calculate_global_price_range(
@@ -760,7 +805,22 @@ def create_app() -> FastAPI:
         now_hel = datetime.now(tz=HELSINKI_TZ)
         base_date = now_hel.date()
         if date == "today":
-            dp = cache.today or await fetch_prices_for_day(base_date)
+            # Check if today's cache contains data for the current date
+            if cache.today is not None:
+                today_intervals_for_current_date = [
+                    it
+                    for it in cache.today.intervals
+                    if it.start_utc.astimezone(HELSINKI_TZ).date() == base_date
+                ]
+                if len(today_intervals_for_current_date) > 0:
+                    dp = cache.today
+                else:
+                    logger.warning(
+                        f"Today's cache contains no data for current date {base_date}, fetching fresh data",
+                    )
+                    dp = await fetch_prices_for_day(base_date)
+            else:
+                dp = await fetch_prices_for_day(base_date)
         elif date == "tomorrow":
             dp = cache.tomorrow
             if dp is None:

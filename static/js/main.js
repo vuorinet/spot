@@ -250,6 +250,7 @@
     };
 
     // Function to check if chart data is stale and needs refresh
+    // Returns object with detailed staleness info for selective refresh
     window.checkStaleData = function () {
         const now = new Date();
         const nowTimestamp = now.getTime();
@@ -257,7 +258,8 @@
         const currentDate = now.toDateString();
 
         const STALE_THRESHOLD = 30 * 60 * 1000; // 30 minutes
-        let needsRefresh = false;
+        let todayStale = false;
+        let tomorrowStale = false;
         let reasons = [];
 
         // Check today's data
@@ -268,13 +270,13 @@
             // Basic staleness check
             if (todayAge > STALE_THRESHOLD) {
                 reasons.push(`today data ${Math.round(todayAge / 1000 / 60)} min old`);
-                needsRefresh = true;
+                todayStale = true;
             }
 
             // Cross-day check: if data was fetched on a different date
             if (fetchedDate && fetchedDate !== currentDate) {
                 reasons.push(`today data from previous day (${fetchedDate})`);
-                needsRefresh = true;
+                todayStale = true;
             }
         }
 
@@ -289,13 +291,13 @@
                 reasons.push(
                     `tomorrow data ${Math.round(tomorrowAge / 1000 / 60)} min old`
                 );
-                needsRefresh = true;
+                tomorrowStale = true;
             }
 
             // Cross-day check: if data was fetched on a different date
             if (fetchedDate && fetchedDate !== currentDate) {
                 reasons.push(`tomorrow data from previous day (${fetchedDate})`);
-                needsRefresh = true;
+                tomorrowStale = true;
             }
 
             // Smart 2 PM check: if data was fetched before 2 PM and it's now after 2 PM
@@ -303,7 +305,7 @@
                 reasons.push(
                     `tomorrow data fetched pre-2PM (${fetchedHour}:00), now post-2PM`
                 );
-                needsRefresh = true;
+                tomorrowStale = true;
             }
 
             // Extended afternoon check: during 2-6 PM, be more aggressive about refreshing
@@ -316,16 +318,22 @@
                             tomorrowAge / 1000 / 60
                         )} min old during afternoon hours`
                     );
-                    needsRefresh = true;
+                    tomorrowStale = true;
                 }
             }
         }
 
-        if (needsRefresh && reasons.length > 0) {
+        const hasStaleData = todayStale || tomorrowStale;
+        if (hasStaleData && reasons.length > 0) {
             console.log(`Stale data detected: ${reasons.join(', ')}`);
         }
 
-        return needsRefresh;
+        return {
+            hasStaleData,
+            todayStale,
+            tomorrowStale,
+            reasons
+        };
     };
 
     // Listen for window focus and visibility changes
@@ -373,9 +381,12 @@
             const dateChanged = window.checkDateChange();
 
             // If date didn't change, check for stale data
-            if (!dateChanged && window.checkStaleData()) {
-                console.log('Periodic check detected stale data - refreshing charts');
-                window.refreshCharts();
+            if (!dateChanged) {
+                const staleDataInfo = window.checkStaleData();
+                if (staleDataInfo.hasStaleData) {
+                    console.log('Periodic check detected stale data - refreshing charts selectively');
+                    window.refreshChartsSelective(staleDataInfo.todayStale, staleDataInfo.tomorrowStale);
+                }
             }
         }
     }, 5 * 60 * 1000); // 5 minutes
@@ -395,18 +406,19 @@
                 console.log(`Key hour check (${hour}:00) - checking for stale data`);
 
                 // Use the smart stale data logic that includes 2 PM awareness
-                if (window.checkStaleData()) {
-                    console.log('Key hour check triggered refresh');
-                    window.refreshCharts();
+                const staleDataInfo = window.checkStaleData();
+                if (staleDataInfo.hasStaleData) {
+                    console.log('Key hour check triggered selective refresh');
+                    window.refreshChartsSelective(staleDataInfo.todayStale, staleDataInfo.tomorrowStale);
                 }
 
                 // Special case: during prime tomorrow publication time (2-4 PM),
                 // check for tomorrow data that might be missing entirely
                 if (hour >= 14 && hour <= 16 && !window.chartDataTimestamps.tomorrow) {
                     console.log(
-                        'Critical time window: No tomorrow data cached, forcing refresh'
+                        'Critical time window: No tomorrow data cached, forcing tomorrow refresh only'
                     );
-                    window.refreshCharts();
+                    window.refreshChartsSelective(false, true); // Only refresh tomorrow chart
                 }
             }
         }
@@ -421,7 +433,6 @@
             window.refreshCharts();
         }
     });
-
 
     // Handle orientation changes only on mobile devices
     let currentOrientation = screen.orientation
@@ -541,23 +552,26 @@
             const dateChanged = window.checkDateChange();
 
             if (dateChanged) {
-                // Date changed - must refresh
+                // Date changed - must refresh both charts, exit early
+                console.log('Date change detected - exiting handleVisibilityChange early (both charts refreshed)');
                 return; // checkDateChange already called refreshCharts
             }
 
-            // Check if data is actually stale
-            const hasStaleData = window.checkStaleData();
+            // Check if data is actually stale (now returns detailed info)
+            const staleDataInfo = window.checkStaleData();
 
             // Smart refresh logic based on sleep duration and data staleness
-            if (hasStaleData) {
+            if (staleDataInfo.hasStaleData) {
                 console.log('Refreshing charts due to stale data');
-                window.refreshCharts();
+                // Use selective refresh - only refresh charts that are actually stale
+                window.refreshChartsSelective(staleDataInfo.todayStale, staleDataInfo.tomorrowStale);
             } else if (sleepInfo) {
                 // Handle different sleep scenarios
                 if (sleepInfo.type === 'long') {
-                    // Long sleep (2+ hours) - always refresh as precaution
-                    console.log('Long sleep detected - refreshing charts as precaution');
-                    window.refreshCharts();
+                    // Long sleep (2+ hours) - check if data is actually stale before refreshing
+                    // Even after long sleep, if data is fresh, just update the yellow line
+                    console.log('Long sleep detected - but data is fresh, only updating yellow line');
+                    window.updateNowLineImmediately();
                 } else if (sleepInfo.type === 'medium') {
                     // Medium sleep (30min-2h) - only refresh if it's during key hours when data might have updated
                     const hour = new Date().getHours();
@@ -585,16 +599,25 @@
         }, 150); // 150ms debounce to handle rapid multiple events
     };
 
-    // Global function to refresh charts (fetch new data from server)
-    window.refreshCharts = function () {
+    // Selective chart refresh function - only refreshes charts that need new data
+    window.refreshChartsSelective = function (refreshToday = true, refreshTomorrow = true) {
         // Prevent multiple simultaneous refreshes
         if (isRefreshInProgress) {
             console.log('Refresh already in progress - skipping duplicate request');
             return;
         }
 
+        if (!refreshToday && !refreshTomorrow) {
+            console.log('No charts need refreshing - skipping');
+            return;
+        }
+
         isRefreshInProgress = true;
-        console.log('Refreshing charts with new data from server...');
+        const chartsToRefresh = [];
+        if (refreshToday) chartsToRefresh.push('today');
+        if (refreshTomorrow) chartsToRefresh.push('tomorrow');
+
+        console.log(`Selectively refreshing charts: ${chartsToRefresh.join(', ')}`);
 
         // Show a brief visual indicator that data is being refreshed
         const existingIndicator = d.querySelector('.refresh-indicator');
@@ -617,7 +640,7 @@
       opacity: 0.9;
       pointer-events: none;
     `;
-        indicator.textContent = 'Updating prices...';
+        indicator.textContent = `Updating ${chartsToRefresh.join(' & ')} prices...`;
         d.body.appendChild(indicator);
 
         // Remove indicator after 3 seconds
@@ -627,80 +650,53 @@
             }
         }, 3000);
 
-        // Clean up any existing chart instances and cached data before refresh
-        const todayChartElement = d.querySelector('#todayChart [id*="googleChart"]');
-        const tomorrowChartElement = d.querySelector(
-            '#tomorrowChart [id*="googleChart"]'
-        );
-
-        // Clear all cached chart data and instances
-        [todayChartElement, tomorrowChartElement].forEach(element => {
-            if (element) {
-                // Clear timers
-                if (element._nowLineTimer) {
-                    clearInterval(element._nowLineTimer);
-                    clearTimeout(element._nowLineTimer);
-                    delete element._nowLineTimer;
-                }
-
-                // Clear event handlers
-                if (element._visibilityHandler) {
-                    document.removeEventListener(
-                        'visibilitychange',
-                        element._visibilityHandler
-                    );
-                    delete element._visibilityHandler;
-                }
-                if (element._focusHandler) {
-                    window.removeEventListener('focus', element._focusHandler);
-                    delete element._focusHandler;
-                }
-                if (element._pageShowHandler) {
-                    window.removeEventListener('pageshow', element._pageShowHandler);
-                    delete element._pageShowHandler;
-                }
-                if (element._pageHideHandler) {
-                    window.removeEventListener('pagehide', element._pageHideHandler);
-                    delete element._pageHideHandler;
-                }
-
-                // Clear cached chart data
-                delete element._chartInstance;
-                delete element._chartData;
-                delete element._validData;
-                delete element._granularity;
-                delete element._originalPriceRange;
-
-                console.log('Cleared cached chart data for', element.id);
+        // Clean up cached data for charts being refreshed
+        if (refreshToday) {
+            const todayChartElement = d.querySelector('#todayChart [id*="googleChart"]');
+            if (todayChartElement) {
+                clearChartCache(todayChartElement);
+                console.log('Cleared cached chart data for today');
             }
-        });
+        }
+
+        if (refreshTomorrow) {
+            const tomorrowChartElement = d.querySelector('#tomorrowChart [id*="googleChart"]');
+            if (tomorrowChartElement) {
+                clearChartCache(tomorrowChartElement);
+                console.log('Cleared cached chart data for tomorrow');
+            }
+        }
 
         // Verify target elements exist before refreshing
         const todayTarget = d.querySelector('#todayChart');
         const tomorrowTarget = d.querySelector('#tomorrowChart');
 
-        if (!todayTarget) {
+        if (refreshToday && !todayTarget) {
             console.error('Today chart target element not found');
             return;
         }
-        if (!tomorrowTarget) {
+        if (refreshTomorrow && !tomorrowTarget) {
             console.error('Tomorrow chart target element not found');
             return;
         }
 
-        // Trigger HTMX refresh for both charts
+        // Trigger HTMX refresh for selected charts
         const margin = d.body.getAttribute('data-default-margin') || '0';
 
         try {
-            htmx.ajax('GET', `/partials/prices?date=today&margin=${margin}`, {
-                target: '#todayChart',
-                swap: 'outerHTML',
-            });
-            htmx.ajax('GET', `/partials/prices?date=tomorrow&margin=${margin}`, {
-                target: '#tomorrowChart',
-                swap: 'outerHTML',
-            });
-            console.log('Chart refresh requests sent');
+            if (refreshToday) {
+                htmx.ajax('GET', `/partials/prices?date=today&margin=${margin}`, {
+                    target: '#todayChart',
+                    swap: 'outerHTML',
+                });
+            }
+            if (refreshTomorrow) {
+                htmx.ajax('GET', `/partials/prices?date=tomorrow&margin=${margin}`, {
+                    target: '#tomorrowChart',
+                    swap: 'outerHTML',
+                });
+            }
+            console.log(`Selective chart refresh requests sent for: ${chartsToRefresh.join(', ')}`);
         } catch (error) {
             console.error('Error refreshing charts:', error);
         }
@@ -708,7 +704,50 @@
         // Reset refresh flag after HTMX requests complete (with timeout fallback)
         setTimeout(() => {
             isRefreshInProgress = false;
-            console.log('Chart refresh completed');
+            console.log('Selective chart refresh completed');
         }, 2000); // 2 second timeout to ensure flag is reset
+    };
+
+    // Helper function to clear chart cache
+    function clearChartCache(chartElement) {
+        if (!chartElement) return;
+
+        // Clear timers
+        if (chartElement._nowLineTimer) {
+            clearInterval(chartElement._nowLineTimer);
+            clearTimeout(chartElement._nowLineTimer);
+            delete chartElement._nowLineTimer;
+        }
+
+        // Clear event handlers
+        if (chartElement._visibilityHandler) {
+            document.removeEventListener('visibilitychange', chartElement._visibilityHandler);
+            delete chartElement._visibilityHandler;
+        }
+        if (chartElement._focusHandler) {
+            window.removeEventListener('focus', chartElement._focusHandler);
+            delete chartElement._focusHandler;
+        }
+        if (chartElement._pageShowHandler) {
+            window.removeEventListener('pageshow', chartElement._pageShowHandler);
+            delete chartElement._pageShowHandler;
+        }
+        if (chartElement._pageHideHandler) {
+            window.removeEventListener('pagehide', chartElement._pageHideHandler);
+            delete chartElement._pageHideHandler;
+        }
+
+        // Clear cached chart data
+        delete chartElement._chartInstance;
+        delete chartElement._chartData;
+        delete chartElement._validData;
+        delete chartElement._granularity;
+        delete chartElement._originalPriceRange;
+    }
+
+    // Global function to refresh charts (fetch new data from server) - backwards compatibility
+    window.refreshCharts = function () {
+        // Use selective refresh with both charts enabled for backwards compatibility
+        window.refreshChartsSelective(true, true);
     };
 })();
