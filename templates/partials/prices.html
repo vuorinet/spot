@@ -16,7 +16,7 @@
 
 <script>
     // Create chart for {{ chart_date }}
-    window.createChart_{{chart_date }} = function() {
+    window.createChart_{{ chart_date }} = function() {
         const date = '{{ chart_date }}';
         const margin = '{{ request.query_params.get('margin', '0') }}';
         const chartElement = document.getElementById('{{ chart_id }}');
@@ -27,7 +27,7 @@
             return;
         }
 
-                // Check if we already have cached data and chart instance for this element
+        // Check if we already have cached data and chart instance for this element
         if (chartElement._chartInstance && chartElement._chartData && chartElement._originalPriceRange) {
             console.log('Redrawing existing chart for {{ chart_date }} without fetching new data');
 
@@ -124,12 +124,12 @@
                         count: 0 // Disable minor gridlines between major ones
                     },
                     textStyle: {
-                        fontSize: isMobile ? 12 : 12, // Increase mobile font size for better visibility
+                        fontSize: isMobile ? 12 : (isTablet ? 14 : 12), // Larger font for tablets
                         color: 'white'
                     },
                     titleTextStyle: {
                         color: 'white',
-                        fontSize: isMobile ? 12 : 12
+                        fontSize: isMobile ? 12 : (isTablet ? 14 : 12)
                     }
                 },
                 isStacked: true,
@@ -138,11 +138,11 @@
                 height: '100%',
                 chartArea: {
                     width: isMobile ? '75%' : '90%', // Reduce width to make room for Y-axis labels
-                    height: isMobile ? '85%' : (isTablet ? '50%' : '65%'),  // Much more conservative height for tablets to accommodate x-axis
+                    height: isMobile ? '85%' : (isTablet ? '45%' : '65%'),  // Further reduced height for tablets to prevent x-axis overflow
                     top: isMobile ? 5 : 15,
                     left: isMobile ? 35 : 50, // Increase left margin for Y-axis labels on mobile
                     right: isMobile ? 10 : 5,
-                    bottom: isMobile ? 15 : (isTablet ? 60 : 40)  // Optimized space for single-row X-axis labels on tablets
+                    bottom: isMobile ? 15 : (isTablet ? 70 : 40)  // Increased bottom space for tablets
                 },
                 series: {
                     0: { color: '#2ecc71' }, // Green
@@ -397,12 +397,12 @@
                             title: '',  // Remove axis title to save space
                             format: 'none',
                             textStyle: {
-                                fontSize: isMobile ? 10 : 12,
+                                fontSize: isMobile ? 10 : (isTablet ? 14 : 12),
                                 color: (data.granularity === 'quarter_hour') ? 'black' : 'white' // Hide native 0-95 on 15-min
                             },
                             titleTextStyle: {
                                 color: 'white',
-                                fontSize: isMobile ? 10 : 12
+                                fontSize: isMobile ? 10 : (isTablet ? 14 : 12)
                             },
                             slantedText: false,
                             gridlines: {
@@ -458,12 +458,12 @@
                                 count: 0 // Disable minor gridlines
                             },
                             textStyle: {
-                                fontSize: isMobile ? 12 : 12, // Increase mobile font size for better visibility
+                                fontSize: isMobile ? 12 : (isTablet ? 14 : 12), // Larger font for tablets
                                 color: 'white'
                             },
                             titleTextStyle: {
                                 color: 'white',
-                                fontSize: isMobile ? 12 : 12
+                                fontSize: isMobile ? 12 : (isTablet ? 14 : 12)
                             }
                         },
                         isStacked: true,
@@ -472,11 +472,11 @@
                         height: '100%',
                         chartArea: {
                             width: isMobile ? '75%' : '90%', // Reduce width to make room for Y-axis labels
-                            height: isMobile ? '85%' : (isTablet ? '50%' : '65%'),  // Much more conservative height for tablets to accommodate x-axis
+                            height: isMobile ? '85%' : (isTablet ? '45%' : '65%'),  // Further reduced height for tablets to prevent x-axis overflow
                             top: isMobile ? 5 : 15,
                             left: isMobile ? 35 : 50, // Increase left margin for Y-axis labels on mobile
                             right: isMobile ? 10 : 5,
-                            bottom: isMobile ? 15 : (isTablet ? 60 : 40)  // Optimized space for single-row X-axis labels on tablets
+                            bottom: isMobile ? 15 : (isTablet ? 70 : 40)  // Increased bottom space for tablets
                         },
                         backgroundColor: 'black',
                         series: {
@@ -524,7 +524,7 @@
 
                         // Add post-processing to overlay clean 0-23 labels for 15-minute data
                         if (data.granularity === 'quarter_hour') {
-                            google.visualization.events.addListener(chart, 'ready', function() {
+                            google.visualization.events.addListener(chart, 'ready', function () {
                                 setTimeout(() => {
                                     try {
                                         const svg = chartElement.querySelector('svg');
@@ -626,7 +626,7 @@
                                                     newLabel.setAttribute('y', labelY.toString());
                                                     newLabel.setAttribute('text-anchor', 'start');
                                                     newLabel.setAttribute('font-family', 'Arial, sans-serif');
-                                                    newLabel.setAttribute('font-size', (isMobile ? '12' : '12'));
+                                                    newLabel.setAttribute('font-size', (isMobile ? '12' : (isTablet ? '14' : '12')));
                                                     newLabel.setAttribute('fill', 'white');
                                                     newLabel.setAttribute('class', 'unified-hour-label');
                                                     svg.appendChild(newLabel);
@@ -665,24 +665,24 @@
                 const currentMinutes = now.getMinutes();
                 const currentSeconds = now.getSeconds();
                 const currentMs = now.getMilliseconds();
-                
+
                 // Find next 15-minute boundary (0, 15, 30, 45)
                 const nextBoundary = Math.ceil(currentMinutes / 15) * 15;
                 const nextBoundaryMinutes = nextBoundary === 60 ? 0 : nextBoundary;
-                
+
                 // Calculate milliseconds until that boundary
-                const minutesUntilBoundary = nextBoundaryMinutes === 0 ? 
+                const minutesUntilBoundary = nextBoundaryMinutes === 0 ?
                     (60 - currentMinutes) : (nextBoundaryMinutes - currentMinutes);
                 const msUntilBoundary = (minutesUntilBoundary * 60 * 1000) - (currentSeconds * 1000) - currentMs;
-                
+
                 return msUntilBoundary;
             }
 
             // Function to set up the next timer
             function scheduleNextUpdate() {
                 const msUntilBoundary = msUntilNext15MinBoundary();
-                console.log(`Scheduling next now line update in ${Math.round(msUntilBoundary/1000)} seconds`);
-                
+                console.log(`Scheduling next now line update in ${Math.round(msUntilBoundary / 1000)} seconds`);
+
                 chartElement._nowLineTimer = setTimeout(() => {
                     updateNowLine(chart, chartElement, validData);
                     // Schedule the next update for 15 minutes later
@@ -700,7 +700,7 @@
                 if (!document.hidden) {
                     console.log('Tab became visible - updating now line immediately');
                     updateNowLine(chart, chartElement, validData);
-                    
+
                     // Reschedule timer to maintain precision after visibility change
                     if (chartElement._nowLineTimer) {
                         clearInterval(chartElement._nowLineTimer);
@@ -718,7 +718,7 @@
             const focusHandler = () => {
                 console.log('Window gained focus - updating now line immediately');
                 updateNowLine(chart, chartElement, validData);
-                
+
                 // Reschedule timer to maintain precision after focus change
                 if (chartElement._nowLineTimer) {
                     clearInterval(chartElement._nowLineTimer);
@@ -736,7 +736,7 @@
                 if (event.persisted || document.wasHidden) {
                     console.log('Page shown from cache or after being hidden - updating now line');
                     updateNowLine(chart, chartElement, validData);
-                    
+
                     // Reschedule timer for precision
                     if (chartElement._nowLineTimer) {
                         clearInterval(chartElement._nowLineTimer);
@@ -932,7 +932,7 @@
                     const intervalIndex = currentHour * 4 + quarter;
                     currentTimeStr = intervalIndex.toString();
                     dataPointIndex = validData.findIndex(row => row[0] === currentTimeStr);
-                    
+
                     console.log(`Current time: ${currentHour}:${currentMinutes.toString().padStart(2, '0')}, interval: ${intervalIndex}, quarter: ${quarter}`);
                 } else {
                     // For hourly data, use hour only
@@ -1027,5 +1027,5 @@
     };
 
     // Execute the chart creation function immediately
-    window.createChart_{{chart_date }} ();
+    window.createChart_{{ chart_date }} ();
 </script>

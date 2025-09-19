@@ -1,198 +1,231 @@
 /* Base styles */
-html, body { 
-  height: 100vh; 
-  margin: 0; 
-  padding: 0; 
-  background-color: #000; 
-  color: #ddd; 
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; 
-  overflow: hidden; 
+html,
+body {
+    height: 100vh;
+    margin: 0;
+    padding: 0;
+    background-color: #000;
+    color: #ddd;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell,
+        Noto Sans, Helvetica, Arial, 'Apple Color Emoji', 'Segoe UI Emoji';
+    overflow: hidden;
 }
 
 /* Enable scrolling on mobile */
 @media screen and (max-width: 900px) {
-  html, body {
-    overflow: auto; /* Enable scrolling on mobile */
-    height: auto; /* Allow body to expand */
-    min-height: 100vh; /* Minimum full viewport height */
-  }
+    html,
+    body {
+        overflow: auto; /* Enable scrolling on mobile */
+        height: auto; /* Allow body to expand */
+        min-height: 100vh; /* Minimum full viewport height */
+    }
 }
 
-.app-header { 
-  display: flex; 
-  justify-content: center; 
-  align-items: center; 
-  padding: 8px 12px; 
-  border-bottom: 1px solid #222; 
-  font-size: 14px; 
-  flex-shrink: 0; 
+.app-header {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 8px 12px;
+    border-bottom: 1px solid #222;
+    font-size: 14px;
+    flex-shrink: 0;
 }
 
-.charts { 
-  position: relative; 
-  display: grid; 
-  grid-template-columns: 1fr 1fr; 
-  gap: 4px; 
-  padding: 4px; 
-  height: calc(100vh - 50px); 
+.charts {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    padding: 4px;
+    height: calc(100vh - 50px);
 }
 
-.chart-head { 
-  color: #aaa; 
-  margin-bottom: 2px; 
-  font-size: 12px; 
+.chart-head {
+    color: #aaa;
+    margin-bottom: 2px;
+    font-size: 12px;
 }
 
-.chart-body { 
-  position: relative; 
-  height: calc(50vh - 25px); /* Reduced overhead for desktop */
-  background: #0b0b0b; 
-  border: 1px solid #222; 
-  border-radius: 4px; 
+.chart-body {
+    position: relative;
+    height: calc(50vh - 25px); /* Reduced overhead for desktop */
+    background: #0b0b0b;
+    border: 1px solid #222;
+    border-radius: 4px;
 }
 
-.chart-placeholder { 
-  position: absolute; 
-  inset: 0; 
-  display: grid; 
-  align-items: end; 
-  gap: 2px; 
-  padding: 2px; 
+.chart-placeholder {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    align-items: end;
+    gap: 2px;
+    padding: 2px;
 }
 
-.bar { 
-  display: flex; 
-  flex-direction: column; 
-  justify-content: flex-end; 
-  background: transparent; 
+.bar {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    background: transparent;
 }
 
-.bar .spot { width: 100%; }
-.bar .margin { width: 100%; background: #333333; }
-.date-string { font-size: 12px; color: #666; }
-.now-line { position: absolute; top: 0; bottom: 0; width: 2px; background: #ffcc00; left: 0; }
-.toast { position: fixed; bottom: 16px; right: 16px; background: #111; color: #eee; padding: 8px 12px; border-radius: 6px; border: 1px solid #333; }
-.hidden { display: none; }
+.bar .spot {
+    width: 100%;
+}
+.bar .margin {
+    width: 100%;
+    background: #333333;
+}
+.date-string {
+    font-size: 12px;
+    color: #666;
+}
+.now-line {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: #ffcc00;
+    left: 0;
+}
+.toast {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    background: #111;
+    color: #eee;
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid #333;
+}
+.hidden {
+    display: none;
+}
 
 /* Mobile and Tablet Responsive Design */
 
 /* Mobile Portrait - Both charts fit on screen without scrolling */
 @media screen and (max-width: 900px) and (orientation: portrait) {
-  .charts { 
-    grid-template-columns: 1fr; /* Always stacked on mobile */
-    gap: 2px; /* Reduce gap to save space */
-    padding: 2px; /* Reduce padding to save space */
-    height: calc(100vh - 30px); /* More height available */
-    overflow: hidden; /* No scrolling needed in portrait */
-  }
-  .chart-body { 
-    height: calc(36vh - 35px); /* Smaller height to ensure both charts fit */
-    min-height: 150px; 
-    max-height: 220px; 
-    border: 1px solid #222; 
-    border-radius: 4px; 
-    padding: 0; 
-    overflow: hidden; 
-  }
-  .app-header { 
-    padding: 3px 6px; /* Reduce header padding to save space */
-    font-size: 12px; 
-  }
-  .chart-head { 
-    font-size: 11px; 
-    margin-bottom: 1px; /* Reduce margin to save space */
-  }
+    .charts {
+        grid-template-columns: 1fr; /* Always stacked on mobile */
+        gap: 2px; /* Reduce gap to save space */
+        padding: 2px; /* Reduce padding to save space */
+        height: calc(100vh - 30px); /* More height available */
+        overflow: hidden; /* No scrolling needed in portrait */
+    }
+    .chart-body {
+        height: calc(36vh - 35px); /* Smaller height to ensure both charts fit */
+        min-height: 150px;
+        max-height: 220px;
+        border: 1px solid #222;
+        border-radius: 4px;
+        padding: 0;
+        overflow: hidden;
+    }
+    .app-header {
+        padding: 3px 6px; /* Reduce header padding to save space */
+        font-size: 12px;
+    }
+    .chart-head {
+        font-size: 11px;
+        margin-bottom: 1px; /* Reduce margin to save space */
+    }
 }
 
 /* Mobile Landscape - One chart fits well, tomorrow chart lurks at bottom */
 @media screen and (max-width: 900px) and (orientation: landscape) {
-  .charts { 
-    grid-template-columns: 1fr; /* Always stacked on mobile */
-    gap: 8px; /* Normal gap between charts */
-    padding: 4px; 
-    height: auto; /* Allow scrolling to see second chart */
-    min-height: calc(100vh + 40vh); /* Extra height to accommodate both charts */
-  }
-  
-  /* Today's chart - takes most of the screen */
-  #todayChart .chart-body { 
-    height: 70vh; /* Large but leaves room for tomorrow to peek */
-    min-height: 250px; 
-    max-height: none; 
-    border: 1px solid #222; 
-    border-radius: 4px; 
-    padding: 0; 
-    overflow: hidden; 
-  }
-  
-  /* Tomorrow's chart - smaller, positioned to peek at bottom */
-  #tomorrowChart {
-    /* No negative margins - let it flow naturally with gap */
-  }
-  #tomorrowChart .chart-body { 
-    height: 60vh; /* Smaller than today's chart */
-    min-height: 200px; 
-    max-height: none; 
-    border: 1px solid #222; 
-    border-radius: 4px; 
-    padding: 0; 
-    overflow: hidden; 
-  }
-  
-  .app-header { 
-    padding: 4px 8px; 
-    font-size: 12px; 
-  }
-  .chart-head { 
-    font-size: 11px; 
-    margin-bottom: 2px; 
-  }
+    .charts {
+        grid-template-columns: 1fr; /* Always stacked on mobile */
+        gap: 8px; /* Normal gap between charts */
+        padding: 4px;
+        height: auto; /* Allow scrolling to see second chart */
+        min-height: calc(100vh + 40vh); /* Extra height to accommodate both charts */
+    }
+
+    /* Today's chart - takes most of the screen */
+    #todayChart .chart-body {
+        height: 70vh; /* Large but leaves room for tomorrow to peek */
+        min-height: 250px;
+        max-height: none;
+        border: 1px solid #222;
+        border-radius: 4px;
+        padding: 0;
+        overflow: hidden;
+    }
+
+    /* Tomorrow's chart - smaller, positioned to peek at bottom */
+    #tomorrowChart {
+        /* No negative margins - let it flow naturally with gap */
+    }
+    #tomorrowChart .chart-body {
+        height: 60vh; /* Smaller than today's chart */
+        min-height: 200px;
+        max-height: none;
+        border: 1px solid #222;
+        border-radius: 4px;
+        padding: 0;
+        overflow: hidden;
+    }
+
+    .app-header {
+        padding: 4px 8px;
+        font-size: 12px;
+    }
+    .chart-head {
+        font-size: 11px;
+        margin-bottom: 2px;
+    }
 }
 
 /* Tablets and Desktop (side-by-side layout) */
 @media screen and (min-width: 901px) {
-  .charts { 
-    grid-template-columns: 1fr 1fr; /* Side-by-side on tablets and desktop */
-    gap: 4px; 
-    padding: 4px; 
-    height: calc(100vh - 50px); 
-    padding-bottom: 50px; /* Increase bottom padding significantly for x-axis labels */
-  }
-  .chart-body { 
-    height: calc(100vh - 180px); /* Leave much more space for X-axis labels */
-    min-height: 200px; 
-    overflow: visible; /* Allow X-axis labels to be visible outside container */
-    margin-bottom: 20px; /* Additional margin for x-axis labels */
-  }
-  .app-header { 
-    padding: 6px 10px; 
-    font-size: 14px; 
-  }
-  .chart-head { 
-    font-size: 12px; 
-    margin-bottom: 2px; 
-  }
+    .charts {
+        grid-template-columns: 1fr 1fr; /* Side-by-side on tablets and desktop */
+        gap: 4px;
+        padding: 4px;
+        height: calc(100vh - 50px);
+        padding-bottom: 50px; /* Increase bottom padding significantly for x-axis labels */
+    }
+    .chart-body {
+        height: calc(100vh - 180px); /* Leave much more space for X-axis labels */
+        min-height: 200px;
+        overflow: visible; /* Allow X-axis labels to be visible outside container */
+        margin-bottom: 20px; /* Additional margin for x-axis labels */
+    }
+    .app-header {
+        padding: 6px 10px;
+        font-size: 14px;
+    }
+    .chart-head {
+        font-size: 12px;
+        margin-bottom: 2px;
+    }
 }
 
 /* Specific adjustments for medium tablets (Samsung Tab S range) */
 @media screen and (min-width: 901px) and (max-width: 1200px) {
-  .charts {
-    padding-bottom: 50px; /* Optimized bottom padding for single-row tablet labels */
-  }
-  .chart-body { 
-    height: calc(100vh - 180px); /* Optimized height for tablets with single-row x-axis labels */
-    min-height: 250px; /* Larger minimum for better usability */
-    margin-bottom: 20px; /* Margin for single-row x-axis labels on tablets */
-  }
+    .charts {
+        padding-bottom: 60px; /* Increased bottom padding for larger axis labels */
+    }
+    .chart-body {
+        height: calc(
+            100vh - 200px
+        ); /* Reduced height to provide more space for x-axis labels */
+        min-height: 200px; /* Reduced minimum to ensure charts fit */
+        margin-bottom: 30px; /* Increased margin for larger axis labels */
+    }
 }
 
 /* Additional tablet landscape-specific fixes */
 @media screen and (min-width: 901px) and (max-width: 1200px) and (orientation: landscape) {
-  .charts {
-    padding-bottom: 60px; /* Optimized bottom padding for single-row landscape labels */
-  }
-  .chart-body { 
-    height: calc(100vh - 200px); /* Optimized height for landscape tablets with single-row labels */
-    margin-bottom: 25px; /* Margin for single-row x-axis labels */
-  }
+    .charts {
+        padding-bottom: 70px; /* Increased bottom padding for larger axis labels in landscape */
+    }
+    .chart-body {
+        height: calc(
+            100vh - 220px
+        ); /* Further reduced height for landscape with larger fonts */
+        margin-bottom: 35px; /* Increased margin for larger axis labels */
+    }
 }
